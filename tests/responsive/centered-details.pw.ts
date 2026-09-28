@@ -54,6 +54,6 @@ test('工作项排序、直接操作及七主题在桌面与窄屏稳定',{tag:'
   await expect(modal.getByRole('button',{name:'添加工作项',exact:true})).toBeInViewport();
   expect(await modal.evaluate(el=>el.scrollWidth<=el.clientWidth+1)).toBe(true);
   expect(await modal.locator('.work-arrangement-field').filter({has:page.getByText('计划开始',{exact:true})}).locator('.inline-edit-value').evaluateAll(nodes=>nodes.every(node=>node.scrollWidth<=node.clientWidth+1))).toBe(true);
-  await expect(modal.getByRole('button',{name:'修正实际日期',exact:true}).first()).toBeVisible();
+  await expect(modal.getByRole('button',{name:'修正日期与说明',exact:true}).first()).toBeVisible();
   await page.screenshot({path:info.outputPath('work-list-short-narrow.png'),animations:'disabled'});
 });

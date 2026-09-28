@@ -1,6 +1,7 @@
 @layer application {
 
 .issues-page { display: grid; gap: 12px; }
+.issue-requirement-link { color: var(--accent-ink); text-decoration: underline; text-underline-offset: 2px; overflow-wrap: anywhere; }
 .issue-board { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 12px; }
 .issue-metric { min-height: 82px; display: flex; align-items: center; gap: 12px; padding: 13px 15px; border: 1px solid var(--surface-border); border-radius: var(--surface-radius); background: var(--surface-bg); box-shadow: var(--surface-shadow); }
 .issue-metric > svg { flex: none; width: 35px; height: 35px; padding: 8px; border-radius: var(--radius-md); }.issue-metric > div { display: grid; gap: 1px; }.issue-metric span { color: var(--text-faint); font-size: 12px; }.issue-metric strong { color: var(--text-primary); font-size: 23px; line-height: 1.1; }.issue-metric small { color: var(--text-faint); font-size: 10px; }.metric-progress > svg { color: var(--warning-text); background: var(--warning-bg); }.metric-deferred > svg { color: var(--text-muted); background: var(--bg-hover); }.metric-resolved > svg { color: var(--success-text); background: var(--success-bg); }.metric-overdue > svg { color: var(--danger-text); background: var(--danger-bg); }

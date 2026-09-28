@@ -210,6 +210,7 @@ export function EditableCell({
   disabled,
   state,
   error,
+  showSaveFeedback = true,
   displayMode = "single",
   className = "",
   onOpen,
@@ -222,6 +223,7 @@ export function EditableCell({
   disabled: boolean;
   state: SaveState;
   error: string;
+  showSaveFeedback?: boolean;
   displayMode?: DisplayMode;
   className?: string;
   onOpen: () => void;
@@ -242,7 +244,7 @@ export function EditableCell({
     >
       <span className={`inline-edit-value inline-edit-value-${displayMode}`}>{display}</span>
       {!disabled && <ChevronDown className="inline-edit-chevron" size={13} />}
-      <span className="inline-edit-feedback"><SaveFeedback state={state} error={error} /></span>
+      <span className="inline-edit-feedback">{showSaveFeedback && <SaveFeedback state={state} error={error} />}</span>
     </button>
     {children}
   </div>;

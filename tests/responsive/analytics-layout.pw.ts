@@ -59,6 +59,46 @@ async function mockAnalytics(page: Page) {
   };
 }
 
+test('跨项目核对统计时保留分析范围，项目周期使用目标项目日期', async ({ page }) => {
+  expect((await page.request.post('/api/login', { data: { username: 'admin', password: '41_xc7q0qOjo4Inw!' } })).ok()).toBe(true);
+  const projects = [];
+  for (const [name, plannedStart, plannedEnd] of [
+    ['周会甲', '2026-08-01', '2026-08-31'], ['周会乙', '2026-09-01', '2026-09-30'],
+  ]) {
+    const response = await page.request.post('/api/projects', { data: { name: name + Date.now(), plannedStart, plannedEnd } });
+    expect(response.ok(), await response.text()).toBe(true);
+    projects.push(await response.json());
+  }
+  const [first, second] = projects;
+  const week = { from: '2026-09-21', to: '2026-09-24' };
+  const switchProject = async (project: { id: string; name: string }, range: typeof week) => {
+    const query = page.waitForResponse(response => {
+      if (!response.url().endsWith('/api/analytics/query')) return false;
+      const body = response.request().postDataJSON();
+      return body.projectId === project.id && body.range.from === range.from && body.range.to === range.to;
+    });
+    await page.locator('.project-switcher-button').click();
+    await page.getByRole('option', { name: project.name, exact: true }).click();
+    expect((await query).status()).toBe(200);
+    await expect(page).toHaveURL(new RegExp('projectId=' + project.id));
+  };
+  await page.goto('/analytics?' + new URLSearchParams({ projectId: first.id, range: 'custom', ...week }));
+  await switchProject(second, week);
+  await expect(page.getByLabel('分析开始日期', { exact: true })).toHaveValue(week.from);
+  await expect(page.getByLabel('分析结束日期', { exact: true })).toHaveValue(week.to);
+  await page.reload();
+  await expect(page.getByLabel('分析开始日期', { exact: true })).toHaveValue(week.from);
+  await expect(page.getByLabel('分析结束日期', { exact: true })).toHaveValue(week.to);
+  await page.goBack();
+  await expect(page).toHaveURL(new RegExp('projectId=' + first.id));
+  await expect(page.getByLabel('分析开始日期', { exact: true })).toHaveValue(week.from);
+  await page.getByRole('button', { name: '项目周期', exact: true }).click();
+  await expect(page.getByText('2026-08-01 至 2026-08-31', { exact: true })).toBeVisible();
+  await switchProject(second, { from: '2026-09-01', to: '2026-09-30' });
+  await expect(page.getByText('2026-09-01 至 2026-09-30', { exact: true })).toBeVisible();
+  await expect(page).toHaveURL(/range=project/);
+});
+
 test('分析日期未填或范围错误时就地提示，修正后恢复查询且不改布局', async ({ page }, testInfo) => {
   expect((await page.request.post('/api/login', { data: { username: 'admin', password: '41_xc7q0qOjo4Inw!' } })).ok()).toBe(true);
   const created = await page.request.post('/api/projects', { data: { name: '分析日期恢复 ' + Date.now() } });

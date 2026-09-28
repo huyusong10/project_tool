@@ -9,7 +9,7 @@ import { usePageSearchParams, usePageScrollPosition } from "../../use-page-view"
 import { useContext, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { UserPlus, UserRoundCheck } from 'lucide-react';
-import { isWriteOutcomeUnknown, jsonBody, requiresWriteRecheck } from "../../api";
+import { ApiError, isWriteOutcomeUnknown, jsonBody, requiresWriteRecheck } from "../../api";
 import { useSession } from "../../app-context";
 import { invalidateArchiveViews, invalidateAccountPermissionViews, invalidateAccountViews, keys } from "../../query-keys";
 import { useOptimisticMutation } from "../../use-optimistic-mutation";
@@ -150,7 +150,7 @@ export function PeopleAccessPage() {
   };
   const lockConfirmationAfterError = (caught: unknown) => {
     if (!requiresWriteRecheck(caught)) return;
-    setConfirmationNeedsReopen(true);
+    if (!(caught instanceof ApiError && caught.code === 'DEPENDENCY_CONFLICT')) setConfirmationNeedsReopen(true);
     refresh();
   };
   const reset = useMutation({

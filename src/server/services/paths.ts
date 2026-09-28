@@ -40,7 +40,7 @@ export function loadPathInput(projectId: string, asOfDate = todayIso()): PathInp
     w.duration_days AS durationDays, w.earliest_start AS earliestStart, w.unblock_estimate AS unblockEstimate,w.arrangement,w.arrangement_anchor AS arrangementAnchor,w.acknowledged_dependencies AS acknowledgedDependencies,
     w.forecast_end AS forecastEnd, w.forecast_duration AS forecastDuration, w.forecast_ready_at AS forecastReadyAt,
     w.blocked_at AS blockedAt, w.blocked_reason AS blockedReason, w.milestone_label AS milestoneLabel
-    FROM work_items w JOIN requirements r ON r.id=w.requirement_id WHERE r.project_id=? ORDER BY w.id`, projectId);
+    FROM work_items w JOIN requirements r ON r.id=w.requirement_id WHERE r.project_id=? ORDER BY w.requirement_id,w.sort_order,w.created_at,w.id`, projectId);
   for(const value of [...requirements,...workItems])value.forecastReview=value.forecastReview?JSON.parse(String(value.forecastReview)):null;
   for(const value of [...requirements,...workItems])value.referenceLinks=readReferenceLinks(value.referenceLinks,'referenceUrl' in value?value.referenceUrl:null);
   const commitments=loadCommitments(projectId);for(const r of requirements)r.commitment=requirementCommitments(commitments,r.id,r.acceptedAt);

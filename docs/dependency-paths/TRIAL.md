@@ -1,5 +1,7 @@
 # 需求依赖与路径分析 · 隔离试用
 
+本文保留 2026-09-09 隔离试用记录，以下地址与入口仅描述当时环境。当前操作规则见[工作流简化方案](../workflow-simplification.md)；候选转正、纳入交付、独立验收和人工阻塞操作已移除。
+
 工作区：`D:/tools/project-manage-paths`。分支：`codex/dependency-paths`，本轮基线 `ba84c6d`。
 
 访问：[http://127.0.0.1:3220](http://127.0.0.1:3220)。管理员访问资料在工作区 `.preview/access.txt`。

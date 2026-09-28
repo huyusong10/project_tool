@@ -51,6 +51,7 @@
 .field-help { margin: -4px 0 0; color: var(--text-faint); font-size: 12px; line-height: 1.55; }.form-error { margin: 0; color: var(--danger); font-size: 12px; overflow-wrap: anywhere; }
 .form-actions { display: flex; justify-content: flex-end; gap: 8px; padding-top: 4px; }
 .login-brand-logo { grid-column: 1/-1; width: 52px; height: 52px; flex-basis: 52px; margin: 0 auto; border-radius: 14px; font-size: 16px; }
+.login-brand-name { margin: 0; overflow-wrap: anywhere; }
 .query-refresh-notice { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; padding: 10px 14px; border: 1px solid var(--warning-border); border-radius: var(--radius-md); color: var(--warning-text); background: var(--warning-bg); font-size: 12px; line-height: 1.6; }
 .query-refresh-notice > span { flex: 1; min-width: 180px; }.query-refresh-notice > button { flex: none; }
 .app-refresh-notice { margin: 12px 20px 0; }

@@ -2,9 +2,10 @@ import { expect, test, type Page, type Locator } from '@playwright/test';
 import type { WorkItemTemplate } from '../../src/client/types';
 import { headerAction as toolbarAction } from './topbar-helpers';
 import { closeGraphProperties, graphProperties, graphToolbar, openGraphDrafts } from './graph-interactions';
+import { chooseOption } from './select-helper';
 const headerAction=async(page:Page,name:string)=>{await closeGraphProperties(page);await toolbarAction(page,name);};
 
-async function fixture(page: Page, existing = true) {
+async function fixture(page: Page, existing = true, legacy = false) {
   const post = async (url: string, data: Record<string, unknown>) => {
     const response = await page.request.post(url, { data });
     expect(response.ok(), await response.text()).toBe(true);
@@ -14,11 +15,11 @@ async function fixture(page: Page, existing = true) {
   const session = await (await page.request.get('/api/session')).json();
   const project = await post('/api/projects', { name: `流程保存旅程-${Date.now()}` });
   const template: WorkItemTemplate | undefined = existing ? await post('/api/templates', {
-    projectId: project.id, name: '接口交付流程', description: '原流程说明', dependencyMode: 'dependencies',
+    projectId: project.id, name: '接口交付流程', description: '原流程说明', dependencyMode: legacy ? 'legacy' : 'dependencies',
     items: [
       { clientKey: 'design', title: '设计', kind: 'work', durationDays: 2, startOffsetDays: 0, sortOrder: 0, predecessorKeys: [] },
-      { clientKey: 'build', title: '开发', kind: 'work', durationDays: 3, startOffsetDays: 2, sortOrder: 1, predecessorKeys: ['design'] },
-      { clientKey: 'release', title: '交付标记', kind: 'milestone', durationDays: 0, startOffsetDays: 5, sortOrder: 2, predecessorKeys: ['build'] },
+      { clientKey: 'build', title: '开发', kind: 'work', durationDays: 3, startOffsetDays: 2, sortOrder: 1, predecessorKeys: legacy ? [] : ['design'], milestoneLabel: legacy ? '验证通过' : null },
+      { clientKey: 'release', title: '交付标记', kind: legacy ? 'work' : 'milestone', durationDays: legacy ? 1 : 0, startOffsetDays: 5, sortOrder: 2, predecessorKeys: legacy ? [] : ['build'], milestoneLabel: legacy ? '修复上线' : null },
     ],
   }) : undefined;
   await page.addInitScript(({ projectId, accountId }) => localStorage.setItem(`project-manage:selected-project:${accountId}`, projectId), { projectId: project.id, accountId: session.accountId });
@@ -51,6 +52,69 @@ async function openDraft(editor: Locator) {
 async function reconnect(page: Page) {
   await page.evaluate(() => { window.dispatchEvent(new Event('offline')); window.dispatchEvent(new Event('online')); });
 }
+
+test('编辑旧流程保留工作项里程碑，新需求使用修改结果且已有需求不变', async ({ page }) => {
+  const { editor, project, template, list } = await fixture(page, true, true);
+  const created = await page.request.post('/api/requirements', { data: {
+    projectId: project.id, templateId: template!.id, title: '修改前需求', plannedStart: '2026-09-28',
+  } });
+  expect(created.ok(), await created.text()).toBe(true);
+  const oldRequirement = await created.json();
+  const readOld = async () => (await page.request.get(`/api/requirements/${oldRequirement.id}`)).json();
+  const before = await readOld();
+  await graphProperties(page, editor.locator(`.react-flow__node[data-id="${template!.items[1].id}"]`));
+  await page.getByRole('textbox', { name: '元素名称', exact: true }).fill('兼容性开发');
+  await page.getByRole('spinbutton', { name: '预计工期', exact: true }).fill('2');
+  await closeGraphProperties(page);
+  await page.getByRole('button', { name: '流程预览', exact: true }).click();
+  const preview = page.getByRole('dialog', { name: '流程预览', exact: true });
+  await expect(preview.locator('.template-preview-summary')).toContainText('2 个里程碑');
+  await expect(preview.locator(`[data-template-node="legacy-milestone:${template!.items[1].id}"]`)).toContainText('验证通过');
+  await preview.getByRole('button', { name: '关闭', exact: true }).click();
+  await graphToolbar(page, '保存修改');
+  await expect.poll(async () => (await list()).find(t => t.id === template!.id)!.items[1].title).toBe('兼容性开发');
+  await page.reload();
+  await expect(editor.locator('[data-layout-ready="true"]')).toBeVisible();
+  const saved = (await list()).find(t => t.id === template!.id)!;
+  expect(saved.items.filter(item => item.kind === 'work')).toHaveLength(3);
+  const milestones = saved.items.filter(item => item.kind === 'milestone');
+  expect(milestones.map(item => item.title)).toEqual(['验证通过', '修复上线']);
+  expect(milestones[0].predecessorIds).toEqual([template!.items[1].id]);
+  expect(milestones[1].predecessorIds).toEqual([template!.items[2].id]);
+  await expect(editor.getByRole('group', { name: '验证通过', exact: true })).toBeVisible();
+  await expect(editor.getByRole('group', { name: '修复上线', exact: true })).toBeVisible();
+  await graphToolbar(page, '保存修改');
+  await expect(page.getByRole('status').filter({ hasText: '流程设计已保存' })).toBeVisible();
+  expect((await list()).find(t => t.id === template!.id)!.items.filter(item => item.kind === 'milestone')).toHaveLength(2);
+  expect(saved.items[1]).toMatchObject({ title: '兼容性开发', durationDays: 2 });
+
+  await page.goto(`/?projectId=${project.id}&scopeType=project&scopeId=${project.id}&workspaceView=list`);
+  await toolbarAction(page, '新建对象');
+  await page.getByRole('menu', { name: '新建对象' }).getByRole('button', { name: '新建需求', exact: true }).click();
+  const form = page.getByRole('dialog', { name: '新建需求', exact: true });
+  await form.getByLabel('需求标题', { exact: true }).fill('修改后需求');
+  await form.getByRole('button', { name: /流程与排期/ }).click();
+  await chooseOption(form.getByRole('combobox', { name: '流程设计', exact: true }), template!.id);
+  await form.getByLabel('计划开始', { exact: true }).fill('2026-09-28');
+  await form.getByRole('button', { name: '创建需求', exact: true }).click();
+  await expect(form).toHaveCount(0);
+  await page.reload();
+  const requirements = await (await page.request.get(`/api/requirements?projectId=${project.id}`)).json();
+  const newRequirement = requirements.find((item: { title: string }) => item.title === '修改后需求');
+  const detail = await (await page.request.get(`/api/requirements/${newRequirement.id}`)).json();
+  expect(detail.milestones.map((item: { title: string }) => item.title).sort()).toEqual(['修复上线', '验证通过']);
+  expect(detail.workItems[1]).toMatchObject({ title: '兼容性开发', durationDays: 2 });
+  await page.getByRole('button', { name: '展开全部', exact: true }).click();
+  await page.getByRole('button', { name: '进入修改后需求', exact: true }).click();
+  await page.getByRole('button', { name: '关系图', exact: true }).click();
+  await expect(page.getByRole('group', { name: '验证通过', exact: true })).toBeVisible();
+  await expect(page.getByRole('group', { name: '修复上线', exact: true })).toBeVisible();
+  const after = await readOld();
+  // Creating a requirement advances the shared project analysis revision only.
+  const business = (value: Record<string, unknown>) => JSON.parse(JSON.stringify(value,
+    (key, field) => key === 'deliveryForecast' && field ? { ...field, revision: 0 } : field));
+  expect(business(after)).toEqual(business(before));
+});
 
 test('流程元素与名称即时保存，返回再进入保留里程碑、依赖和排期', async ({ page }) => {
   const { editor, template, list } = await fixture(page);

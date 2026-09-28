@@ -23,6 +23,7 @@ import { ProjectForm } from "../components/ManagementForms";
 import { canManageProject } from "../permissions";
 import { SearchInput } from "../components/SearchInput";
 import { useToast } from "../components/Toast";
+import { useAppNavigate } from "../use-app-navigation";
 
 type ProjectMemberRole = "manager" | "member" | "viewer";
 
@@ -40,6 +41,18 @@ export function ProjectSettingsPage() {
   const recheckAccountKey = session.accountId || session.username || "guest";
   const client = useQueryClient();
   const toast = useToast();
+  const navigate = useAppNavigate();
+  const activeProject = useRef<string | null>(selectedProjectId);
+  useEffect(() => {
+    activeProject.current = selectedProjectId;
+    return () => { activeProject.current = null; };
+  }, [selectedProjectId]);
+  const leaveSettingsAfterHandoff = (input: { projectId: string; personId: string; role: ProjectMemberRole }) => {
+    if (activeProject.current !== input.projectId || input.personId !== session.personId || session.globalRole === 'admin' || input.role === 'manager') return false;
+    toast.success(`你在此项目的角色已更新为${input.role === 'viewer' ? '观察者' : '项目成员'}，已返回项目空间`);
+    navigate('/?projectId=' + encodeURIComponent(input.projectId), { replace: true });
+    return true;
+  };
   const project = projects.find((item) => item.id === selectedProjectId);
   const [editing, setEditing] = useState(false);
   const [adding, setAdding] = useState(false);
@@ -85,6 +98,7 @@ export function ProjectSettingsPage() {
       if (snapshot?.query && currentQuery === snapshot.query && currentQuery.state.data === snapshot.data) {
         client.setQueryData<Person[]>(queryKey, (current = []) => current.map((person) => person.id === saved.id ? saved : person));
       }
+      leaveSettingsAfterHandoff(input);
       invalidateProjectAccessViews(client);
     },
     onError: async (error, input) => {
@@ -95,8 +109,8 @@ export function ProjectSettingsPage() {
         setMembersNeedRecheck(false, input.projectId);
         if (latest.find((person) => person.id === input.personId)?.projectRole === input.role) {
           setRole.reset();
+          if (!leaveSettingsAfterHandoff(input)) toast.success("已核对最新状态：项目角色已更新");
           invalidateProjectAccessViews(client);
-          toast.success("已核对最新状态：项目角色已更新");
         }
       } catch {
         setMembersNeedRecheck(true, input.projectId);
@@ -208,7 +222,7 @@ export function ProjectSettingsPage() {
     restore.mutate({ projectId: selectedProjectId, entity, id, expectedDeletedAt });
   };
   return <>
-    <PageHeader title="项目设置" secondaryActions={project&&canManage?<Button variant="secondary" className="ghost-button" disabled={!membersQuery.data || memberMutationBusy} onClick={() => setAdding(true)}><UserPlus size={15} />添加成员</Button>:null} actions={project&&canManage?<Button variant="primary" className="primary-button" onClick={() => setEditing(true)}><Edit3 size={15} />编辑项目</Button>:null} />
+    <PageHeader title="项目设置" actions={project&&canManage?<Button variant="primary" className="primary-button" onClick={() => setEditing(true)}><Edit3 size={15} />编辑项目</Button>:null} />
     <div className="page-content">
       {!project ? <EmptyState title="暂无可访问项目" detail="请联系管理员分配项目权限。" /> : <>
         <section className="panel project-settings-summary">
@@ -219,6 +233,7 @@ export function ProjectSettingsPage() {
             <div><h2>项目成员</h2><p>在当前项目内配置项目经理、项目成员和观察者</p></div>
             <div className="project-member-header-actions">
               <span className="project-member-count">{membersQuery.data ? `${members.length} 人` : "—"}</span>
+              {canManage && <Button variant="secondary" className="ghost-button" disabled={!membersQuery.data || memberMutationBusy} onClick={() => setAdding(true)}><UserPlus size={15} />添加成员</Button>}
             </div>
           </header>
           {membersNeedRecheck && <div role="alert" className="warning-banner">成员操作结果待核对，当前权限可能已变化，本窗口不会重复提交。<Button busy={(membersQuery.isFetching)} aria-label={membersQuery.isFetching ? "读取中…" : "重新读取成员"} variant="secondary" className="ghost-button" disabled={membersQuery.isFetching} onClick={() => void reloadMembers()}>{"重新读取成员"}</Button></div>}

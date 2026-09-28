@@ -30,8 +30,13 @@ test('Phase 布局移动、撤销和自动整理可恢复，保存后保持相�
   const f=await phaseFixture(page);await page.goto('/?'+new URLSearchParams({view:'feature',featureId:f.feature.id,phaseId:f.phases[1].id,mode:'graph'}));
   const ready=()=>expect(page.locator('[data-layout-ready=true]')).toBeVisible(),node=page.locator('.react-flow__node[data-id="'+f.testing.id+'"]');await ready();
   const position=()=>node.evaluate(el=>({x:new DOMMatrix(getComputedStyle(el).transform).m41,y:new DOMMatrix(getComputedStyle(el).transform).m42})),original=await position();
+  const cards=page.locator('.dependency-card'),savedJudgments=await cards.allTextContents();
+  await page.route('**/dependency-changes/preview',route=>route.abort('connectionfailed'));
   await page.getByRole('button',{name:'编辑画布',exact:true}).click();await node.locator('.dependency-card').click();await expect(page.locator('.modal-card-workspace')).toHaveCount(0);await page.locator('.dependency-canvas').focus();
   await page.keyboard.press('Shift+ArrowRight');await expect.poll(position).toEqual({x:original.x+10,y:original.y});await ready();
+  // Moving a card leaves formal delivery facts readable even while preview cannot load.
+  await expect.poll(()=>cards.allTextContents()).toEqual(savedJudgments);
+  await page.unroute('**/dependency-changes/preview');
   await page.keyboard.press('Control+z');await expect.poll(position).toEqual(original);await ready();
   await page.keyboard.press('Shift+ArrowRight');await ready();await expect.poll(position).toEqual({x:original.x+10,y:original.y});
   await page.getByRole('button',{name:'保存修改',exact:true}).click();await expect(page.getByRole('button',{name:'编辑画布',exact:true})).toBeVisible();

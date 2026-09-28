@@ -443,6 +443,7 @@ export function SystemPage() {
   const integrityCheck = useMutation({
     mutationFn: () => systemApi.systemDatabaseCheck<DatabaseIntegrityCheck>({ method: "POST", readOnly: true }),
   });
+  const integrityPanel = useRef<HTMLElement>(null);
   const integrityLock = useSynchronousPendingLock(integrityCheck.isPending);
   const maintenanceBusy = backupLock.busy || restoreLock.busy || deleteBackup.isPending || restoreWaitPending || uploadLock.busy || downloadLock.busy;
   const maintenanceStateUnverified = !overviewQuery.data || Boolean(overviewQuery.error) || Boolean(backupsQuery.error);
@@ -528,7 +529,13 @@ export function SystemPage() {
         moreActions={<>
           <Button variant="secondary" className="ghost-button" disabled={maintenanceBlocked} onClick={() => importInput.current?.click()}><Upload size={15} />{uploadLock.busy ? '正在上传并校验…' : '导入数据库'}</Button>
           <Button variant="secondary" className="ghost-button" disabled={maintenanceBlocked} onClick={() => { if (!maintenanceBlocked) backupLock.run(() => { clearMaintenanceFeedback(); backup.mutate(true); }); }}><Download size={15} />{backupLock.busy && backup.variables ? '正在导出…' : downloadLock.busy ? '正在下载…' : '导出数据库'}</Button>
-          <Button busy={(integrityLock.busy)} aria-label={integrityLock.busy ? "检查中…" : "立即检查"} variant="secondary" className="ghost-button" disabled={integrityLock.busy} onClick={() => integrityLock.run(() => integrityCheck.mutate())}><ShieldCheck size={15} />{"立即检查"}</Button>
+          <Button busy={(integrityLock.busy)} aria-label={integrityLock.busy ? "检查中…" : "立即检查"} variant="secondary" className="ghost-button" disabled={integrityLock.busy} onClick={() => integrityLock.run(() => {
+            integrityCheck.mutate();
+            requestAnimationFrame(() => {
+              integrityPanel.current?.scrollIntoView({ block: "center" });
+              integrityPanel.current?.focus({ preventScroll: true });
+            });
+          })}><ShieldCheck size={15} />{"立即检查"}</Button>
         </>}/>
       <div className="page-content">
         <div className="system-page">
@@ -612,7 +619,7 @@ export function SystemPage() {
 
           <section className="system-secondary-grid">
             <article className="panel system-detail-panel">
-              <header><div><h2>系统运行信息</h2><p>只读展示当前部署参数</p></div></header>
+              <header><div><h2>系统运行信息</h2><p>运行日志用于排查请求失败；业务变更在操作审计中查询</p></div></header>
               <div className="system-detail-list">
                 <div><span>应用版本</span><strong>v{overview?.service.version ?? "—"}</strong></div>
                 <div><span>启动时间</span><strong>{overview ? new Date(overview.service.startedAt).toLocaleString("zh-CN", { hour12: false }) : "—"}</strong></div>
@@ -621,18 +628,19 @@ export function SystemPage() {
                 <div><span>监听地址</span><strong>{overview ? `${overview.service.host}:${overview.service.port}` : "—"}</strong></div>
                 <div><span>数据库文件</span><strong title={overview?.database.path}>{overview?.database.path ?? "—"}</strong></div>
                 <div><span>备份目录</span><strong title={overview?.database.backupDirectory}>{overview?.database.backupDirectory ?? "—"}</strong></div>
+                <div><span>运行日志目录</span><strong className="system-log-path">{overview?.logging ? overview.logging.directory ?? "未启用文件日志，请查看服务进程输出" : "—"}</strong></div>
+                <div><span>日志级别</span><strong>{overview?.logging?.level.toUpperCase() ?? "—"}</strong></div>
                 <div className="http-alert"><ShieldCheck size={16} /><span>当前使用HTTP，仅限可信局域网访问</span></div>
               </div>
             </article>
-            <article className="panel system-detail-panel system-check-panel">
+            <article ref={integrityPanel} tabIndex={-1} aria-label="数据库健康检查" className="panel system-detail-panel system-check-panel">
               <header><div><h2>数据库健康检查</h2><p>检查SQLite结构和数据页，不修改业务数据</p></div></header>
-              <div className="system-check-content">
-                <div className={`system-check-state ${integrityCheck.data ? integrityCheck.data.ok ? "is-success" : "is-error" : ""}`}>
+              <div className="system-check-content" role="status" aria-live="polite">
+                <div className={`system-check-state ${integrityLock.busy ? "" : integrityCheck.error ? "is-error" : integrityCheck.data ? integrityCheck.data.ok ? "is-success" : "is-error" : ""}`}>
                   <ShieldCheck size={30} />
-                  <div><strong>{integrityCheck.data ? integrityCheck.data.ok ? "数据库状态正常" : "发现数据库异常" : "等待执行完整性检查"}</strong><span>{integrityCheck.data?.message ?? `当前使用 ${overview?.database.journalMode || "—"} 日志模式`}</span></div>
+                  <div><strong>{integrityLock.busy ? "正在检查数据库…" : integrityCheck.error ? "本次检查未完成" : integrityCheck.data ? integrityCheck.data.ok ? "数据库状态正常" : "发现数据库异常" : "等待执行完整性检查"}</strong><span>{integrityLock.busy ? "正在校验SQLite结构和数据页，请稍候。" : integrityCheck.error?.message ?? integrityCheck.data?.message ?? `当前使用 ${overview?.database.journalMode || "—"} 日志模式`}</span></div>
                 </div>
-                {integrityCheck.data && <dl className="system-check-meta"><div><dt>检查时间</dt><dd>{new Date(integrityCheck.data.checkedAt).toLocaleString("zh-CN", { hour12: false })}</dd></div><div><dt>检查耗时</dt><dd>{integrityCheck.data.durationMs} ms</dd></div></dl>}
-                {integrityCheck.error && <p className="form-error">{integrityCheck.error.message}</p>}
+                {!integrityLock.busy && !integrityCheck.error && integrityCheck.data && <dl className="system-check-meta"><div><dt>检查时间</dt><dd>{new Date(integrityCheck.data.checkedAt).toLocaleString("zh-CN", { hour12: false })}</dd></div><div><dt>检查耗时</dt><dd>{integrityCheck.data.durationMs} ms</dd></div></dl>}
               </div>
             </article>
             <BrandingSettingsCard accountKey={maintenanceAccountKey} />

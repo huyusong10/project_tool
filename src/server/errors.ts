@@ -2,6 +2,12 @@ import { ZodError } from 'zod';
 import { DateRangeError } from '../shared/workday';
 
 export type AppErrorCode =
+  | 'JIRA_KEY_UNAVAILABLE'
+  | 'JIRA_CONNECTION_REQUIRED'
+  | 'JIRA_CONNECTION_FAILED'
+  | 'JIRA_AUTH_FAILED'
+  | 'JIRA_PERMISSION_DENIED'
+  | 'JIRA_DISABLED'
   | 'DATABASE_MAINTENANCE'
   | 'WORKFLOW_RETIRED'
   | 'VALIDATION_ERROR'

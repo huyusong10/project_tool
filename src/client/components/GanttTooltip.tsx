@@ -26,32 +26,36 @@ type TooltipStore = ReturnType<typeof createTooltipStore>;
 export function useGanttTooltip() {
   const [store] = useState(createTooltipStore);
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const dismissed = useRef(false);
   const cancelClose = () => {
     if (!closeTimer.current) return;
     clearTimeout(closeTimer.current); closeTimer.current = null;
   };
   const closeSoon = () => { cancelClose(); closeTimer.current = setTimeout(() => store.set(null), 120); };
+  const close = () => { dismissed.current = true; cancelClose(); store.set(null); };
   useEffect(() => () => { if (closeTimer.current) clearTimeout(closeTimer.current); store.set(null); }, [store]);
   const bind = (content: ReactNode) => ({
     onPointerEnter: (event: PointerEvent<HTMLElement>) => {
-      if (event.buttons) return;
+      if (event.buttons || dismissed.current) return;
       cancelClose(); store.set({ x: event.clientX, y: event.clientY, content });
     },
     onPointerMove: (event: PointerEvent<HTMLElement>) => {
-      if (event.buttons) return;
+      // Removing the popup can expose another bar without the pointer moving.
+      if (event.buttons || dismissed.current && !event.movementX && !event.movementY) return;
+      dismissed.current = false;
       cancelClose(); store.set({ x: event.clientX, y: event.clientY, content });
     },
     onPointerLeave: closeSoon,
     onFocus: (event: FocusEvent<HTMLElement>) => {
-      cancelClose(); const bounds = event.currentTarget.getBoundingClientRect();
+      dismissed.current = false; cancelClose(); const bounds = event.currentTarget.getBoundingClientRect();
       store.set({ x: bounds.left + bounds.width / 2, y: bounds.bottom, content });
     },
     onBlur: closeSoon,
   });
-  return { bind, close: () => { cancelClose(); store.set(null); }, tooltip: <TooltipLayer store={store} onEnter={cancelClose} onLeave={closeSoon} /> };
+  return { bind, close, tooltip: <TooltipLayer store={store} onEnter={cancelClose} onLeave={closeSoon} onDismiss={close} /> };
 }
 
-function TooltipLayer({ store, onEnter, onLeave }: { store: TooltipStore; onEnter: () => void; onLeave: () => void }) {
+function TooltipLayer({ store, onEnter, onLeave, onDismiss }: { store: TooltipStore; onEnter: () => void; onLeave: () => void; onDismiss: () => void }) {
   const state = useSyncExternalStore(store.subscribe, store.getSnapshot, () => null);
   const open = Boolean(state);
   useEffect(() => {
@@ -60,12 +64,12 @@ function TooltipLayer({ store, onEnter, onLeave }: { store: TooltipStore; onEnte
       if (event.target instanceof Element && event.target.closest('.gantt-popover')) return;
       store.set(null);
     };
-    const escape = (event: KeyboardEvent) => { if (event.key === 'Escape') store.set(null); };
+    const escape = (event: KeyboardEvent) => { if (event.key === 'Escape') onDismiss(); };
     window.addEventListener('scroll', close, true);
     window.addEventListener('resize', close);
     window.addEventListener('keydown', escape);
     return () => { window.removeEventListener('scroll', close, true); window.removeEventListener('resize', close); window.removeEventListener('keydown', escape); };
-  }, [open, store]);
+  }, [open, store, onDismiss]);
   if (!state || typeof document === 'undefined') return null;
   const width = Math.min(400, window.innerWidth - 24);
   const viewportMaxHeight = Math.min(520, window.innerHeight - 24);
@@ -84,7 +88,9 @@ function TooltipLayer({ store, onEnter, onLeave }: { store: TooltipStore; onEnte
       className="gantt-popover"
       role="tooltip"
       onPointerEnter={onEnter}
-      onPointerLeave={onLeave}
+      onPointerLeave={event => { if (!event.currentTarget.contains(document.activeElement)) onLeave(); }}
+      onFocus={onEnter}
+      onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget)) onLeave(); }}
       style={{
         left,
         top,

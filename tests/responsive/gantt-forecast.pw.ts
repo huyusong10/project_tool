@@ -35,7 +35,7 @@ test('预测延伸到交付日，实际条和完成度仍在今天，双轨与�
   await expect(tail).toHaveCSS('border-top-style', 'dashed');
   await expect(row.locator('.gantt-forecast-label')).toHaveCount(0);
   await expect(tail).toHaveAttribute('aria-label', /预计 09\/17 · 还需 4 工作日/);
-  await expect(row.getByRole('button',{name:/最近达成：提测就绪/})).toBeVisible();
+  await expect(row.locator('.workspace-latest-milestone')).toHaveCount(0);
   const geometry = () => row.evaluate(root => {
     const el = (s: string) => root.querySelector<HTMLElement>(s)!;
     const end = (s: string) => parseFloat(el(s).style.left) + parseFloat(el(s).style.width);

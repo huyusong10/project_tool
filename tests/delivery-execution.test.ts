@@ -23,6 +23,60 @@ async function fixture(extra:Record<string,unknown>={}){
  return {projectId:project.id as string,owner,r:r.json<Requirement>()};
 }
 async function command(id:string,action:string,data:Record<string,unknown>={}){const current=await detail(id);return post('/api/requirements/'+id+'/'+action,{expectedVersion:current.version,...data});}
+it.each(['direct','work_items','work_items_with_organization'] as const)('%s 执行中澄清保留前后内容，未执行、重复、无关字段和失败提交不新增说明',async mode=>{
+ const {r,owner}=await fixture({background:'原业务说明',acceptanceCriteria:'原完成标准'});
+ const patch=async(data:Record<string,unknown>)=>{
+  const current=await detail(r.id);
+  return req('PATCH','/api/requirements/'+r.id,{expectedVersion:current.version,...mode==='work_items_with_organization'?{featureId:current.featureId}: {},...data});
+ };
+ expect((await patch({background:'执行前整理'})).statusCode).toBe(200);
+ expect((await detail(r.id)).progressUpdates).toEqual([]);
+ if(mode==='direct'){
+  expect((await command(r.id,'start')).statusCode).toBe(200);
+  expect((await command(r.id,'progress',{requirementPercent:30})).statusCode).toBe(200);
+ }else{
+  const parent=await detail(r.id);
+  const created=await post('/api/requirements/'+r.id+'/work-items',{expectedVersion:parent.version,title:'核对工作',ownerId:owner.id});
+  expect(created.statusCode,created.body).toBe(200);
+  const started=await post('/api/work-items/'+created.json().id+'/start',{expectedVersion:created.json().version});
+  expect(started.statusCode,started.body).toBe(200);
+ }
+ const before=await detail(r.id);
+ const saved=await patch({background:'新业务说明',acceptanceCriteria:'新完成标准',reason:'澄清场景'});
+ expect(saved.statusCode,saved.body).toBe(200);
+ const after=await detail(r.id),entry=after.progressUpdates![0];
+ expect(after.progressUpdates).toHaveLength(before.progressUpdates!.length+1);
+ expect(after.progressUpdates).toEqual(expect.arrayContaining(before.progressUpdates!));
+ expect(entry).toMatchObject({eventType:'note',workItemId:null,percent:before.progress,createdByName:'admin',content:'需求说明调整；说明：执行前整理 → 新业务说明；完成标准：原完成标准 → 新完成标准'});
+ expect(after).toMatchObject({progress:before.progress,status:before.status,plannedStart:before.plannedStart,plannedEnd:before.plannedEnd,actualStart:before.actualStart});
+ const workFacts=(value:Requirement)=>value.workItems.map(w=>({id:w.id,version:w.version,status:w.status,progress:w.progress,ownerId:w.ownerId,actualStart:w.actualStart,plannedStart:w.plannedStart,plannedEnd:w.plannedEnd}));
+ expect(workFacts(after)).toEqual(workFacts(before));
+ expect((await patch({background:'  新业务说明  ',acceptanceCriteria:'新完成标准'})).statusCode).toBe(200);
+ expect((await patch({title:'仅修订名称'})).statusCode).toBe(200);
+ expect((await detail(r.id)).progressUpdates).toEqual(after.progressUpdates);
+ const stable=await detail(r.id);
+ expect((await patch({expectedVersion:before.version,acceptanceCriteria:'过期标准'})).statusCode).toBe(409);
+ expect((await patch({ownerId:'invalid-person',acceptanceCriteria:'无效分工的标准'})).statusCode).toBe(400);
+ expect(await detail(r.id)).toEqual(stable);
+ const cleared=await patch({acceptanceCriteria:null});expect(cleared.statusCode,cleared.body).toBe(200);
+ expect(cleared.json<Requirement>().progressUpdates![0].content).toBe('需求说明调整；完成标准：新完成标准 → 未设置');
+});
+it.each(['start','deadline'] as const)('补齐直接需求的 %s 日期时保留已有另一端，错误区间不写入',async mode=>{
+ const start=addBusinessDays(todayIso(),0),end=addBusinessDays(start,3);
+ const {r}=await fixture(mode==='start'?{plannedEnd:end}:{plannedStart:start});
+ await command(r.id,'start');await command(r.id,'progress',{requirementPercent:35,content:'已开始核对资料'});
+ const before=await detail(r.id);
+ const response=await command(r.id,'reschedule',{scheduleMode:mode,...mode==='start'?{plannedStart:start}:{plannedEnd:end},reason:'补齐缺失日期'});
+ expect(response.statusCode,response.body).toBe(200);
+ const after=await detail(r.id);
+ expect(after).toMatchObject({plannedStart:start,plannedEnd:end,actualStart:before.actualStart,progress:35,status:'in_progress',durationDays:null});
+ expect(after.progressUpdates).toEqual(expect.arrayContaining(before.progressUpdates!));
+ expect(after.progressUpdates).toHaveLength(before.progressUpdates!.length+1);
+ const partial=await fixture(mode==='start'?{plannedEnd:end}:{plannedStart:start});
+ const invalid=await command(partial.r.id,'reschedule',{scheduleMode:mode,...mode==='start'?{plannedStart:addBusinessDays(end,1)}:{plannedEnd:addBusinessDays(start,-1)}});
+ expect(invalid.statusCode,invalid.body).toBe(400);
+ expect(await detail(partial.r.id)).toEqual(partial.r);
+});
 it('开始时补选负责人一次生效；无说明更新与返工保留事实记录',async()=>{
  const {r,owner}=await fixture({ownerId:null});
  expect(r.ownerValid).toBe(false);

@@ -37,7 +37,7 @@ export function requirementVarianceValue(requirement: Requirement): number | nul
   return requirement.scheduleVarianceDays ?? null;
 }
 
-export function requirementVarianceDisplay(requirement: Requirement) {
+export function requirementVarianceDisplay(requirement: Requirement): { label: string; className: string; title: string; detail?: string } {
   const progressDetail = `实际进度 ${requirement.progress}%，${requirement.plannedProgress === null ? '计划进度待确定' : `计划进度 ${requirement.plannedProgress}%`}`;
   if (requirement.status !== "cancelled" && (requirement.status === "planning" || requirement.scheduleComplete === false || !requirement.plannedStart || !requirement.plannedEnd)) {
     const schedule = requirementScheduleSummary(requirement);
@@ -73,12 +73,12 @@ export function requirementVarianceDisplay(requirement: Requirement) {
     return { label: "待评估", className: "muted", title: `${progressDetail}；暂时无法换算计划偏差` };
   }
   if (variance > 0) {
-    return { label: `落后 ${variance}个工作日`, className: "danger-text", title: `${progressDetail}${reference}，落后 ${variance} 个工作日` };
+    return { label: `进度落后 ${variance}个工作日`, className: "danger-text", title: `${progressDetail}${reference}，落后 ${variance} 个工作日`, detail: progressDetail + reference };
   }
   if (variance < 0) {
-    return { label: `领先 ${Math.abs(variance)}个工作日`, className: "safe-text", title: `${progressDetail}${reference}，领先 ${Math.abs(variance)} 个工作日` };
+    return { label: `进度领先 ${Math.abs(variance)}个工作日`, className: "safe-text", title: `${progressDetail}${reference}，领先 ${Math.abs(variance)} 个工作日`, detail: progressDetail + reference };
   }
-  return { label: "按计划", className: "", title: `${progressDetail}；当前进展与计划曲线一致` };
+  return { label: "进度符合计划", className: "", title: `${progressDetail}；当前进展与计划曲线一致`, detail: progressDetail };
 }
 
 export function requirementDeliveryDate(r:Requirement){

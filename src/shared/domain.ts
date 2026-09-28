@@ -206,6 +206,16 @@ export function deriveWorkItemStatus(item: WorkItemLike): WorkItemStatus {
   return workItemStatuses.includes(item.status as WorkItemStatus) ? item.status as WorkItemStatus : 'not_started';
 }
 
+/** A partial direct plan keeps its known endpoint until a duration can be derived. */
+export function rescheduleDirectDates(current: { plannedStart: string | null; plannedEnd: string | null; durationDays?: number | null }, input: { plannedStart?: string | null; plannedEnd?: string | null }) {
+  const duration = current.durationDays || (current.plannedStart && current.plannedEnd ? businessDaysInclusive(current.plannedStart, current.plannedEnd) : null);
+  const plannedStart = input.plannedStart || (input.plannedEnd && duration ? addBusinessDays(input.plannedEnd, 1 - duration) : current.plannedStart);
+  const plannedEnd = input.plannedEnd || (input.plannedStart && duration ? addBusinessDays(input.plannedStart, duration - 1) : current.plannedEnd);
+  for (const date of [plannedStart, plannedEnd]) if (date && !isBusinessDay(date)) throw new Error('计划日期必须是工作日');
+  if (plannedStart && plannedEnd && plannedStart > plannedEnd) throw new Error('计划开始不能晚于计划完成');
+  return { plannedStart, plannedEnd };
+}
+
 export function deriveRequirementScheduleRange(
   requirement: { plannedStart?: string | null; plannedEnd?: string | null },
   workItems: WorkItemLike[],

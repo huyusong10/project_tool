@@ -8,7 +8,7 @@ import { useListPagination } from '../use-list-pagination';
 import type { StartAssignment } from '../components/StartAssignmentDialog';
 
 import { directRequirementTimelineItem } from '../requirement-timeline';
-import { requirementRiskDisplay } from '../requirement-presentation';
+import { requirementRiskDisplay, requirementVarianceDisplay } from '../requirement-presentation';
 import { assertCleanRequirementDraft } from '../use-graph-draft';
 import { DeliveryControls } from '../components/DeliveryControls';
 import { usePageSearchParams, usePageScrollPosition } from '../use-page-view';
@@ -88,11 +88,14 @@ export function MyWorkPage() {
       {!!data?.requirements.length && <section className="panel my-owned-requirements paged-panel">
         <header><div><h2>我负责的需求</h2><p>计划、进展和待处理事项</p></div></header>
         <div className="my-owned-requirement-grid paged-body" ref={ownedPagination.scrollRef}>
-          {ownedPagination.items.map((requirement) => <div className="my-owned-requirement-card" key={requirement.id}><button className="my-owned-requirement-link" onClick={() => navigate(`/requirements/${requirement.id}`)}>
+          {ownedPagination.items.map((requirement) => {
+            const risk=requirementRiskDisplay(requirement as Requirement),variance=requirementVarianceDisplay(requirement as Requirement);
+            const planning=requirement.planningReasons.join('、')||requirement.readinessIssues?.join('、');
+            return <div className="my-owned-requirement-card" key={requirement.id}><button className="my-owned-requirement-link" onClick={() => navigate(`/requirements/${requirement.id}`)}>
             <div><strong>{requirement.title}</strong></div>
             <p>{requirement.projectName}<br /><span>{requirement.plannedStart || "待排期"}</span> → <span>{requirement.plannedEnd || "待排期"}</span></p>
-            <footer><span className={`status-pill status-${requirement.status}`}>{requirementStatusLabels[requirement.status as keyof typeof requirementStatusLabels] || requirement.status}</span><span>{requirement.planningReasons.join("、") || requirement.readinessIssues?.join('、') || requirementRiskDisplay(requirement as Requirement).label}</span><b>{requirement.actionCount} 项待处理</b></footer>
-          </button>{requirement.executionMode==='direct'&&<DeliveryControls requirement={requirement as Requirement} compact/>}</div>)}
+            <footer><span className={`status-pill status-${requirement.status}`}>{requirementStatusLabels[requirement.status as keyof typeof requirementStatusLabels] || requirement.status}</span>{requirement.status!=='cancelled'&&<span title={planning||variance.title}>{planning||`${risk.closed?'':risk.label+' · '}${variance.label}`}</span>}<b>{requirement.actionCount} 项待处理</b></footer>
+          </button>{requirement.executionMode==='direct'&&<DeliveryControls requirement={requirement as Requirement} compact/>}</div>;})}
         </div>
         <Pagination {...ownedPagination.props} label="我负责的需求分页" />
       </section>}
@@ -127,7 +130,12 @@ export function MyWorkPage() {
           renderActions={(baseItem) => {
             const item = baseItem as MyWorkItem;
             const direct=directEntries.find(r=>r.id===item.id);if(direct)return <Button variant="secondary" className="ghost-button" onClick={()=>navigate('/requirements/'+direct.requirementId)}>处理需求</Button>;
+            const predecessors = item.unmetPredecessors || [];
+            const executionNotice = ['completed', 'cancelled'].includes(item.status) ? '' : predecessors.length
+              ? `前置尚未完成：${predecessors.map(entry => entry.title).join('、')}。可按实际情况开始。`
+              : item.deliveryForecast?.reasons.join('；');
             return <div className="my-work-gantt-actions">
+              {executionNotice && <Button variant="link" tone="warning" size="compact" title={executionNotice} aria-label={`查看${item.title}的执行提示`} onClick={() => navigate(`/requirements/${item.requirementId}?workItemId=${encodeURIComponent(item.id)}`)}><AlertTriangle size={13} />{predecessors.length ? '前置未完成' : '执行提示'}</Button>}
               {item.status === 'in_progress' && <Button variant="secondary" size="small" className="my-work-progress-action" onClick={() => setProgressItem(item)} title="更新进度" aria-label={`为${item.title}更新进度`}><PencilLine size={14} /><span>更新进度</span></Button>}
               <WorkItemActions item={item} writeNeedsRecheck={workItemActionRechecks.has(item.id)} onWriteNeedsRecheckChange={(required) => setWorkItemActionRecheck(item.id, required)} onOpenChange={(open) => setActiveActionItemId((current) => open ? item.id : current === item.id ? undefined : current)} onAction={(nextAction, text, expectedVersion, expectedDependencyRevision, assignment) => action.mutateAsync({ item, action: nextAction, expectedVersion, expectedDependencyRevision, assignment, ...(nextAction === 'start' ? { reason: text } : { content: text }) })} onReload={async () => {
                 const [latest, requirement] = await Promise.all([

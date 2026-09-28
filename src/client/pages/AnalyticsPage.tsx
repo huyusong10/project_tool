@@ -1,6 +1,6 @@
 import { readRecheck, persistRecheck } from '../core/write-recheck';
 import * as reportingApi from '../features/reporting/api';
-import { Button } from '../components/Button';
+import { Button, ButtonLink } from '../components/Button';
 import { analyticsValue } from "../analytics-presentation";
 import { copyLabel } from '../../shared/copy-label';
 import { usePageSearchParams, usePageScrollPosition } from "../use-page-view";
@@ -72,6 +72,7 @@ function valueLabel(value: number | null, unit: AnalyticsPanelResult["unit"]) {
 }
 
 function chartOption(panel: AnalyticsPanelConfig, result: AnalyticsPanelResult) {
+  const valueFormatter = (value: unknown) => typeof value === 'number' ? valueLabel(value, result.unit) : '—';
   const labels = result.rows.map((row) => row.label);
   const primary = result.rows.map((row) => {
     const color = chartCategoryColor(panel.dimension, row.key);
@@ -111,7 +112,7 @@ function chartOption(panel: AnalyticsPanelConfig, result: AnalyticsPanelResult) 
   const legend = result.secondaryMeasureLabel ? { top: 0, right: 12, textStyle: { color: "var(--text-muted)" } } : undefined;
   const horizontal = panel.visualization === "bar" && ["requirement", "person", "owner"].includes(panel.dimension || "");
   if (horizontal) return {
-    tooltip: { trigger: "axis" },
+    tooltip: { trigger: "axis", valueFormatter },
     legend,
     grid: { left: 120, right: 24, top: legend ? 34 : 16, bottom: 24 },
     xAxis: { type: "value", minInterval: result.unit === "count" ? 1 : undefined, splitLine: { lineStyle: { color: "var(--divider)" } }, axisLabel: { color: "var(--text-muted)" } },
@@ -119,7 +120,7 @@ function chartOption(panel: AnalyticsPanelConfig, result: AnalyticsPanelResult) 
     series,
   };
   return {
-    tooltip: { trigger: "axis" },
+    tooltip: { trigger: "axis", valueFormatter },
     legend,
     grid: { left: 42, right: 18, top: result.secondaryMeasureLabel ? 34 : 16, bottom: 40 },
     xAxis: { type: "category", data: labels, axisLabel: { color: "var(--text-muted)", hideOverlap: true }, axisLine: { lineStyle: { color: "var(--border-default)" } } },
@@ -128,11 +129,12 @@ function chartOption(panel: AnalyticsPanelConfig, result: AnalyticsPanelResult) 
   };
 }
 
-function PanelContent({ panel, result, loading, retry }: {
+function PanelContent({ panel, result, loading, retry, linkRequirements = false }: {
   panel: AnalyticsPanelConfig;
   result?: AnalyticsPanelResult;
   loading?: boolean;
   retry?: () => void;
+  linkRequirements?: boolean;
 }) {
   if (loading) return <LoadingState className="analytics-panel-loading" label="正在计算…" />;
   if (!result || result.error) return <EmptyState title="图表加载失败" detail={result?.error || "暂时无法读取分析数据。"} action={retry ? <Button variant="secondary" className="ghost-button" onClick={retry}><RefreshCcw size={14} />重试</Button> : undefined} />;
@@ -141,11 +143,17 @@ function PanelContent({ panel, result, loading, retry }: {
     <strong>{valueLabel(analyticsValue(result.rows[0], result.unit), result.unit)}</strong>
     <span>{analyticsValue(result.rows[0], result.unit) === null ? (panel.measure === "on_time_rate" ? "暂无完成样本" : "暂无有效样本") : result.measureLabel}</span>
   </div>;
-  if (panel.visualization === "table") return <div className="analytics-table-scroll"><table className="analytics-table">
+  const showRequirementLinks = linkRequirements && panel.dimension === 'requirement';
+  const table = <div className="analytics-table-scroll"><table className="analytics-table">
     <thead><tr><th>{result.dimensionLabel || "项目"}</th><th>{result.measureLabel}</th>{result.secondaryMeasureLabel && <th>{result.secondaryMeasureLabel}</th>}</tr></thead>
-    <tbody>{result.rows.map((row) => <tr key={row.key}><td>{row.label}</td><td>{valueLabel(analyticsValue(row, result.unit), result.unit)}</td>{result.secondaryMeasureLabel && <td>{valueLabel(analyticsValue(row, result.unit, true), result.unit)}</td>}</tr>)}</tbody>
+    <tbody>{result.rows.map((row) => <tr key={row.key}><td>{showRequirementLinks ? <ButtonLink variant="link" className="analytics-requirement-link" to={'/requirements/' + encodeURIComponent(row.key)}>{row.label}</ButtonLink> : row.label}</td><td>{valueLabel(analyticsValue(row, result.unit), result.unit)}</td>{result.secondaryMeasureLabel && <td>{valueLabel(analyticsValue(row, result.unit, true), result.unit)}</td>}</tr>)}</tbody>
   </table></div>;
-  return <Chart option={chartOption(panel, result)} height={panel.size === "large" ? 290 : 238} ariaLabel={`${panel.title}图表`} />;
+  if (panel.visualization === "table") return table;
+  return <>
+    {result.unit === 'days' && <p className="analytics-chart-unit">单位：工作日</p>}
+    <Chart option={chartOption(panel, result)} height={panel.size === "large" ? 290 : 238} ariaLabel={`${panel.title}图表`} />
+    {showRequirementLinks && <details className="analytics-requirement-details"><summary>查看需求明细</summary>{table}</details>}
+  </>;
 }
 
 function analyticsTimeLabel(panel: AnalyticsPanelConfig, result?: AnalyticsPanelResult, asOfDate?: string) {
@@ -154,10 +162,11 @@ function analyticsTimeLabel(panel: AnalyticsPanelConfig, result?: AnalyticsPanel
   return "跟随时间范围";
 }
 
-function AnalyticsPanelCard({ panel, result, asOfDate, loading, editing, disabled = false, children, onEdit, onCopy, onDelete, retry }: {
+function AnalyticsPanelCard({ panel, result, asOfDate, projectId, loading, editing, disabled = false, children, onEdit, onCopy, onDelete, retry }: {
   panel: AnalyticsPanelConfig;
   result?: AnalyticsPanelResult;
   asOfDate?: string;
+  projectId?: string;
   loading: boolean;
   editing: boolean;
   disabled?: boolean;
@@ -176,7 +185,8 @@ function AnalyticsPanelCard({ panel, result, asOfDate, loading, editing, disable
         <Button iconOnly variant="secondary" tone="danger" className="danger" aria-label={`删除${panel.title}`} title="删除" disabled={disabled} onClick={onDelete}><Trash2 size={14} /></Button>
       </div>}
     </header>
-    <div className="analytics-panel-body"><PanelContent panel={panel} result={result} loading={loading} retry={retry} /></div>
+    <div className="analytics-panel-body"><PanelContent panel={panel} result={result} loading={loading} retry={retry} linkRequirements={!editing && Boolean(projectId)} /></div>
+    {!editing && projectId && panel.dataset === 'people' && panel.measure === 'current_concurrency' && <footer className="analytics-panel-link"><ButtonLink variant="link" to={'/people?' + new URLSearchParams({ projectId, view: 'analysis' })}>查看人员工作安排</ButtonLink></footer>}
   </article>;
 }
 
@@ -431,7 +441,7 @@ export function AnalyticsPage() {
             />
           </div>}
         /> : activeLayout.panels.map((panel) => <div className={`analytics-grid-item analytics-panel-${panel.size}`} key={panel.id}>
-          <AnalyticsPanelCard panel={panel} result={resultMap.get(panel.id)} asOfDate={dataQuery.data?.asOfDate} loading={dataQuery.isLoading} editing={false} retry={() => void dataQuery.refetch()} />
+          <AnalyticsPanelCard panel={panel} result={resultMap.get(panel.id)} asOfDate={dataQuery.data?.asOfDate} projectId={selectedProjectId} loading={dataQuery.isLoading} editing={false} retry={() => void dataQuery.refetch()} />
         </div>)}
       </section>}
       {editingPanel && <Modal title="配置分析图表" width={1080} onClose={() => setEditingPanel(null)}><PanelEditor initial={editingPanel} catalog={catalog} range={range} rangeError={rangeError} projectId={selectedProjectId} onClose={() => setEditingPanel(null)} onSave={updatePanel} /></Modal>}

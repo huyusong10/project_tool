@@ -60,6 +60,36 @@ test('规划关系提交响应丢失后通过批次回执核对，不重复建�
  await page.route('**/api/projects/'+state.projectId+'/dependency-changes/apply',async route=>{writes++;await route.fetch();await route.abort('connectionfailed');});await graphToolbar(page,'保存修改');await expect(page.getByLabel('编辑画布',{exact:true})).toBeVisible();expect(writes).toBe(1);expect((await(await page.request.get('/api/projects/'+state.projectId+'/feature-relations')).json())).toHaveLength(1);
 });
 
+test('新规划关系保存后再次修改说明，刷新恢复草稿并保持执行资料',async({page})=>{
+  const state=await fixture(page),base='/api/projects/'+state.projectId;
+  const requirement=await(await page.request.get('/api/requirements/'+state.req.id)).json();
+  await page.goto('/paths');await ready(page);await page.getByLabel('编辑画布',{exact:true}).click();
+  await headerAction(page,'建立规划关系');
+  await chooseOption(dialog(page).getByLabel('前置特性'),state.group.id);
+  await chooseOption(dialog(page).getByLabel('后续特性'),state.future.id);
+  await dialog(page).getByLabel('关系说明').fill('基础授权为协作探索提供试点结果');
+  await dialog(page).getByRole('button',{name:'加入草稿'}).click();await graphToolbar(page,'保存修改');
+  await expect(page.getByLabel('编辑画布',{exact:true})).toBeVisible();
+  const original=(await(await page.request.get(base+'/feature-relations')).json())[0];
+  const edge=page.locator('.react-flow__edge[data-id="feature:'+state.group.id+'>feature:'+state.future.id+'"] .dependency-edge-label');
+  await page.getByLabel('编辑画布',{exact:true}).click();await edge.click();
+  const note=page.getByLabel('规划关系说明',{exact:true}),updated='基础授权提供已核验的权限边界，协作探索在评审时参考；执行顺序由需求依赖确定。';
+  await note.fill('取消的说明草稿');await note.press('Escape');await expect(note).toHaveValue(original.note);
+  await note.fill(updated);await note.press('Tab');await closeGraphProperties(page);
+  await expect(page.getByLabel('保存修改',{exact:true})).toBeEnabled();
+  expect((await(await page.request.get(base+'/feature-relations')).json())[0]).toEqual(original);
+  await page.reload();await ready(page);await edge.click();await expect(note).toHaveValue(updated);
+  await graphToolbar(page,'保存修改');await expect(page.getByLabel('编辑画布',{exact:true})).toBeVisible();
+  const saved=await(await page.request.get(base+'/feature-relations')).json();
+  expect(saved).toHaveLength(1);expect(saved[0]).toMatchObject({id:original.id,note:updated,version:original.version+1,sourceFeatureId:state.group.id,targetFeatureId:state.future.id});
+  const after=await(await page.request.get('/api/requirements/'+state.req.id)).json();
+  expect(after.deliveryForecast.revision).toBeGreaterThan(requirement.deliveryForecast.revision);
+  expect({...after,deliveryForecast:{...after.deliveryForecast,revision:requirement.deliveryForecast.revision}}).toEqual(requirement);
+  await page.reload();await ready(page);await edge.click();await expect(dialog(page)).toContainText(updated);await expect(note).toHaveCount(0);
+  await closeGraphProperties(page);await page.getByRole('button',{name:'权限管理',exact:true}).click();await dialog(page).getByRole('tab',{name:'依赖',exact:true}).click();
+  await expect(dialog(page)).toContainText(updated);await expect(dialog(page)).toContainText('后续');
+});
+
 test('特性资料与评估详情不横向溢出',{tag:'@responsive'},async({page})=>{
   await fixture(page);await edit(page);await fill(page);
   for(const viewport of [page.viewportSize()!,{width:390,height:844}]){await page.setViewportSize(viewport);await expect(dialog(page)).toBeVisible();expect(await dialog(page).evaluate(el=>el.scrollWidth<=el.clientWidth+1)).toBe(true);expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);}

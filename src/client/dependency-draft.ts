@@ -5,7 +5,8 @@ import type { DependencyChanges } from '../shared/path-contracts';
 import {applyFeatureRelationDraft} from '../shared/features';
 import {templateInstanceKey,type DraftTemplateInstance} from '../shared/template-instance';
 export function draftNetwork(data: PathAnalysis, changes: DependencyChanges, instances:DraftTemplateInstance[]=[]): PathAnalysis {
-  if (!changes.add.length && !changes.remove.length && !changes.estimates.length&&!changes.entities?.length&&!changes.layouts?.length&&!changes.featureRelations?.length) return data;
+  const layouts=[...(data.layouts||[]).filter(l=>!changes.layouts?.some(c=>c.scope===l.scope&&c.direction===l.direction)),...(changes.layouts||[]).map(l=>({...l,version:l.expectedVersion}))];
+  if (!changes.add.length && !changes.remove.length && !changes.estimates.length&&!changes.entities?.length&&!changes.featureRelations?.length) return changes.layouts?.length ? {...data,layouts} : data;
   const templates=instances.filter(t=>changes.entities?.some(c=>c.entity==='requirement'&&c.op==='create'&&t.key===templateInstanceKey(c)));
   const dependencies = [...data.dependencies,...templates.flatMap(t=>t.dependencies)].filter(d=>!changes.remove.includes(d.id)).concat(changes.add.map(({ clientId, ...d }) => ({ ...d, id: clientId, projectId: data.projectId, origin: 'manual' })));
   let nodes = data.nodes.map(n => ({...n}));
@@ -20,8 +21,20 @@ export function draftNetwork(data: PathAnalysis, changes: DependencyChanges, ins
       }else if(c.op==='update')requirements=requirements.map(r=>r.id===c.id?{...r,...c.data}:r);
       else {requirements=requirements.filter(r=>r.id!==c.id);nodes=nodes.filter(n=>n.requirementId!==c.id);}
     }else {
-      if(c.op==='create'){const n=addNode(c.id,c.requirementId||null,c.entity==='milestone'?'milestone':'work',c.data.title||'未命名');Object.assign(n,c.data);n.estimate.durationDays=c.entity==='work'?(c.data.durationDays===undefined?1:c.data.durationDays):null;nodes.push(n);if(c.entity==='milestone')milestones.push({id:c.id,projectId:data.projectId,requirementId:c.requirementId||null,milestoneKind:c.data.milestoneKind||'ordinary',title:n.title,targetDate:c.data.targetDate||null,confirmationMode:c.data.confirmationMode||'auto',achievedAt:null,version:1});}
-      else if(c.op==='update'){nodes=nodes.map(n=>n.id===c.id?{...n,...c.data,estimate:{...n.estimate,...c.data.durationDays!==undefined?{durationDays:c.data.durationDays}:{}}}:n);milestones=milestones.map(m=>m.id===c.id?{...m,...c.data}:m);}
+      if(c.op==='create'){const n=addNode(c.id,c.requirementId||null,c.entity==='milestone'?'milestone':'work',c.data.title||'未命名');Object.assign(n,c.data);if(c.entity==='work')n.assigneeIds=[...new Set([...c.data.assigneeIds||[],...n.ownerId?[n.ownerId]:[]])];n.estimate.durationDays=c.entity==='work'?(c.data.durationDays===undefined?1:c.data.durationDays):null;nodes.push(n);if(c.entity==='milestone')milestones.push({id:c.id,projectId:data.projectId,requirementId:c.requirementId||null,milestoneKind:c.data.milestoneKind||'ordinary',title:n.title,targetDate:c.data.targetDate||null,confirmationMode:c.data.confirmationMode||'auto',achievedAt:null,version:1});}
+      else if(c.op==='update'){
+        nodes=nodes.map(n=>{
+          if(n.id!==c.id)return n;
+          const updated={...n,...c.data,estimate:{...n.estimate,...c.data.durationDays!==undefined?{durationDays:c.data.durationDays}:{}}};
+          if(c.entity==='work'){
+            // Match server preview: changing the owner preserves collaborators, not the former owner.
+            const collaborators=c.data.assigneeIds??n.assigneeIds?.filter(id=>id!==n.ownerId)??[];
+            updated.assigneeIds=[...new Set([...collaborators,...updated.ownerId?[updated.ownerId]:[]])];
+          }
+          return updated;
+        });
+        milestones=milestones.map(m=>m.id===c.id?{...m,...c.data}:m);
+      }
       else {nodes=nodes.filter(n=>n.id!==c.id);milestones=milestones.filter(m=>m.id!==c.id);}
     }
   }
@@ -51,7 +64,7 @@ export function draftNetwork(data: PathAnalysis, changes: DependencyChanges, ins
   dependencies.forEach(d => edges.push({ id: d.id, source:dependencySource(d), target:dependencyTarget(d), dependencyId: d.id, critical: false }));
   requirements=requirements.map(r=>({...r,executionStage:deriveExecutionStage(r,nodes.filter(n=>n.requirementId===r.id&&n.kind==='work').map(n=>({...n,progress:n.progress||0,durationDays:n.estimate.durationDays})),milestones.filter(m=>m.requirementId===r.id))}));
   const featureContext=data.featureContext?{...data.featureContext,overview:projectPhaseOverview(data.featureContext.overview,requirements),relations:applyFeatureRelationDraft(data.featureContext.relations,changes.featureRelations||[],data.projectId),requirements:[...data.featureContext.requirements.filter(r=>r.deletedAt),...requirements]}:undefined;
-  return { ...data,featureContext, nodes, dependencies, edges,requirements,risks,milestones,layouts:[...(data.layouts||[]).filter(l=>!changes.layouts?.some(c=>c.scope===l.scope&&c.direction===l.direction)),...(changes.layouts||[]).map(l=>({...l,version:l.expectedVersion}))] };
+  return { ...data,featureContext, nodes, dependencies, edges,requirements,risks,milestones,layouts };
 }
 export function dependencyIssue(data: PathAnalysis, changes: DependencyChanges,instances:DraftTemplateInstance[]=[]) {
   const network = draftNetwork(data, changes,instances);

@@ -22,6 +22,7 @@ export type SystemOverview = {
     shmSizeBytes: number; totalSizeBytes: number; journalMode: string;
     importMaxBytes?: number;
   };
+  logging: { level: string; directory: string | null };
   backups: {
     count: number; restorableCount: number; totalSizeBytes: number; lastCreatedAt: string | null; overdue: boolean;
     retentionDays: number; maxCount: number; nextScheduledAt: string;

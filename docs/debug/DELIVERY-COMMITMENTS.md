@@ -1,5 +1,7 @@
 # 交付承诺与操作一致性
 
+本文记录 2026-09-09 的历史实现。当前规则见[工作流简化方案](../workflow-simplification.md)：预测根据日期和依赖计算，工作概况可填写人工预测，不再要求单独确认预测或交付承诺。下文入口与接口仅作为历史记录。
+
 基线 `e586449`。开发目录 `D:\tools\project-manage-debug`，分支 `codex/continuous-debug`。
 
 ## 使用入口

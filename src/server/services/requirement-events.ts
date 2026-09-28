@@ -8,9 +8,9 @@ import type { Actor } from '../auth';
 
 import { assertRequirementOwnerOrManager, requireAuthorizationActor } from '../authorization';
 
-import { getRequirement } from './requirements';
+import { getRequirement, type RequirementRecord } from './requirements';
 
-import { requireActiveProject, nowIso, row } from './support';
+import { describeChanges, requireActiveProject, nowIso, row } from './support';
 
 type RequirementEventEntry = {
   eventType: string;
@@ -35,6 +35,12 @@ export function appendRequirementEvents(requirementId: string, entries: Requirem
 
 export function appendRequirementEvent(requirementId: string, eventType: string, content: string, actor: Actor, workItemId: string | null = null, workItemPercent: number | null = null, supersedesId: string | null = null, createdAt = nowIso()) {
   return appendRequirementEvents(requirementId, [{ eventType, content, workItemId, workItemPercent, supersedesId }], actor, createdAt)[0];
+}
+
+export function recordRequirementClarification(current: RequirementRecord, next: { background?: string | null; acceptanceCriteria?: string | null }, actor: Actor, createdAt: string) {
+  if (!current.actualStart && !current.progress && !current.workItems?.some(item => item.actualStart || item.progress > 0)) return;
+  const changes = Object.fromEntries(Object.entries(next).filter(([key, value]) => value !== undefined && value !== current[key as keyof typeof next]));
+  if (Object.keys(changes).length) appendRequirementEvent(current.id, 'note', '需求说明调整；' + describeChanges(current, changes), actor, null, null, null, createdAt);
 }
 
 export function reopenRequirementForMilestone(id:string,title:string,actor:Actor){

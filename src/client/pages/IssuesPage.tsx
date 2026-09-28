@@ -8,6 +8,8 @@ import { Button } from '../components/Button';
 import { usePageResources } from '../page-context';
 import { useDeferredValue, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { Link } from 'react-router-dom';
+import { workspaceParams } from '../workspace-location';
 import { usePageSearchParams, usePageScrollPosition } from "../use-page-view";
 import { AlertTriangle, CheckCircle2, Clock3, PauseCircle, Plus, UserRound } from "lucide-react";
 import { jsonBody } from "../api";
@@ -176,7 +178,9 @@ function IssueDetail({
       <div>
         <div className="issue-detail-badges"><IssueStatusControl issue={issue} canManage={canEditIssue} disabled={pending} onPendingChange={onPendingChange} compact /><StatusBadge kind="priority" value={issue.priority} />{issue.overdue && <span className="issue-overdue-badge">已逾期</span>}</div>
         <h3 title={issue.title}>{issue.title}</h3>
-        <p>{issueScope(issue)} · {issue.ownerName || "未分配负责人"}</p>
+        <p>{issue.requirementId && !pending
+          ? <Link className="issue-requirement-link" aria-label={'查看关联需求：' + issueScope(issue)} to={'/?' + workspaceParams({ projectId, view: 'list', scope: { kind: 'requirement', id: issue.requirementId }, inspector: issue.requirementId, detailTab: 'overview' })}>{issueScope(issue)}</Link>
+          : issueScope(issue)} · {issue.ownerName || "未分配负责人"}</p>
       </div>
       <div className="issue-settings-current-progress"><span>当前进度</span><div><i><b style={{ width: `${issue.progress}%` }} /></i><strong>{issue.progress}%</strong></div><small>由状态命令与追加进展共同维护</small></div>
     </header>
@@ -188,7 +192,7 @@ function IssueDetail({
       </div> : <IssueForm issue={issue} projectId={projectId} people={people} requirements={requirements} canManage defaultReporter={defaultReporter} autoFocusTitle={tab === "basic"} onClose={onClose} busy={pending} onPendingChange={onPendingChange} />}
   </DetailCard>;
   const updates = <>
-      <DetailCard title="追加进展" className="issue-settings-progress-entry" description={canEditIssue ? "填写本次进度和说明；选择100%可直接保存并解决" : "记录本次进展和处理说明"}>
+      <DetailCard title="追加进展" className="issue-settings-progress-entry" description={canEditIssue && canSetProgress(issue) ? "填写本次进度和说明；选择100%可直接保存并解决" : "记录本次进展和处理说明"}>
         {canContribute ? <IssueUpdateForm issue={issue} canResolve={canEditIssue} canSetProgress={canSetProgress} busy={pending} onPendingChange={onPendingChange} /> : <p className="issue-settings-resolved-note">当前角色可查看进展，但不能追加记录。</p>}
       </DetailCard>
   </>;

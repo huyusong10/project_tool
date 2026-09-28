@@ -13,7 +13,7 @@ describe('跨页面数据表达', () => {
     expect(requirementVarianceDisplay(pending).label).toBe('未排期');
     expect(requirementVarianceDisplay({ ...base, scheduleComplete: false, plannedProgress: null }).label).toBe('排期不完整');
     expect(requirementVarianceDisplay({ ...base, scheduleVarianceDays: null }).label).toBe('待评估');
-    expect(requirementVarianceDisplay({ ...base, scheduleVarianceDays: 0 }).label).toBe('按计划');
+    expect(requirementVarianceDisplay({ ...base, scheduleVarianceDays: 0 }).label).toBe('进度符合计划');
   });
   it('待验收保留服务端交付风险；只对完成和取消关闭当前风险', () => {
     expect(requirementRiskDisplay({ ...base, status: 'pending_acceptance', riskLevel: 'high' })).toMatchObject({ closed: false, evaluated: true, label: '高风险' });

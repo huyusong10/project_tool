@@ -165,13 +165,14 @@ export function listActionItems(
     else if (!issue.ownerValid) reasonCodes.push('owner_unavailable');
     if(issue.nextReviewAt&&issue.nextReviewAt<=today)reasonCodes.push('follow_up');
     if (!reasonCodes.length) continue;
+    const detailTab = reasonCodes.some(reason => reason === 'unassigned' || reason === 'owner_unavailable') ? 'basic' : 'updates';
     items.push(makeItem({
       sourceType: 'issue', sourceId: issue.id, projectId: filters.projectId,
       requirementId: issue.requirementId, contextTitle: issue.requirementTitle, title: issue.title,
       reasonCodes, ownerId: issue.ownerValid ? issue.ownerId : null,
       ownerName: issue.ownerId && !issue.ownerValid ? '项目经理' : issue.ownerName, dueDate: issue.dueDate, nextReviewAt:issue.nextReviewAt,
       overdueWorkdays: isOverdueByWorkday(issue.dueDate, today) ? Math.max(0, businessDayDelta(issue.dueDate, today)) : 0,
-      targetPath: `/issues?issueId=${encodeURIComponent(issue.id)}`, updatedAt: issue.updatedAt,
+      targetPath: `/issues?issueId=${encodeURIComponent(issue.id)}&detailTab=${detailTab}`, updatedAt: issue.updatedAt,
     }));
   }
 

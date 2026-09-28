@@ -47,6 +47,74 @@ test('行动提示失效执行人，从原工作项更换负责人后可开始�
   await expect(page.locator('.action-item')).toHaveCount(0);
 });
 
+test('离岗交接保留归档阻止原因，移交工作后可归档且原记录仍可读取', async ({ page }) => {
+  const { r, project, previous, next, detail } = await fixture(page);
+  const work = (await detail()).workItems[0];
+  expect((await page.request.post(`/api/work-items/${work.id}/start`, { data: { expectedVersion: work.version } })).ok()).toBe(true);
+  const beforeProgress = await detail();
+  const progress = await page.request.post(`/api/requirements/${r.id}/progress`, { data: { expectedVersion: beforeProgress.workItems[0].version, workItemId: work.id, workItemPercent: 40, content: '离岗前已核对第一部分，剩余内容由接手人继续。' } });
+  expect(progress.ok(), await progress.text()).toBe(true);
+  const before = await detail();
+  await page.goto('/resources');
+  await page.getByRole('button', { name: `打开${previous.name}操作`, exact: true }).click();
+  await page.getByRole('menuitem', { name: '禁止登录', exact: true }).click();
+  await page.getByRole('dialog', { name: '禁止账号登录', exact: true }).getByRole('button', { name: '禁止登录', exact: true }).click();
+  const row = page.locator('.people-access-row').filter({ hasText: previous.name });
+  await expect(row).toContainText('仍有待处理任务');
+  await row.getByRole('button', { name: `打开${previous.name}操作`, exact: true }).click();
+  await page.getByRole('menuitem', { name: '归档人员', exact: true }).click();
+  const archive = page.getByRole('dialog', { name: '归档人员', exact: true });
+  await archive.getByRole('button', { name: '确认归档', exact: true }).click();
+  await expect(archive.getByRole('alert')).toContainText('该人员仍有需求0项、工作项1项、问题0项，请先重新分配');
+  await expect(archive).not.toContainText('账号或人员状态已变化');
+  expect(await detail()).toEqual(before);
+  await archive.getByRole('button', { name: '取消', exact: true }).click();
+
+  await page.goto('/actions?' + new URLSearchParams({ projectId: project.id, reason: 'owner_unavailable' }));
+  await page.locator('.action-item').filter({ hasText: '交接工作' }).click();
+  await page.getByRole('tab', { name: '资料', exact: true }).click();
+  const arrangement = page.locator(`.work-arrangement-row[data-work-id="${work.id}"]`);
+  await arrangement.getByRole('button', { name: /^主负责人：/ }).click();
+  await page.getByRole('option', { name: new RegExp(next.name) }).click();
+  await expect(arrangement.getByRole('button', { name: /^主负责人：/ })).toContainText(next.name);
+  const handed = await detail();
+  expect(handed.workItems[0]).toMatchObject({ ownerId: next.id, progress: 40, status: 'in_progress', plannedStart: before.workItems[0].plannedStart, plannedEnd: before.workItems[0].plannedEnd, actualStart: before.workItems[0].actualStart });
+  for (const update of before.progressUpdates || []) expect(handed.progressUpdates).toContainEqual(update);
+
+  await page.getByRole('dialog').getByRole('button', { name: '关闭', exact: true }).click();
+  await page.getByRole('link', { name: '人员权限', exact: true }).click();
+  await page.getByRole('button', { name: `打开${previous.name}操作`, exact: true }).click();
+  await page.getByRole('menuitem', { name: '归档人员', exact: true }).click();
+  await archive.getByRole('button', { name: '确认归档', exact: true }).click();
+  await expect(archive).toHaveCount(0);
+  await expect(row).toHaveCount(0);
+  await page.reload();
+  await expect(row).toHaveCount(0);
+  const archived = await (await page.request.get('/api/archives')).json();
+  expect(archived.people).toEqual(expect.arrayContaining([expect.objectContaining({ id: previous.id })]));
+  expect(await detail()).toEqual(handed);
+  await page.goto('/requirements/' + r.id);
+  await page.getByRole('tab', { name: '记录', exact: true }).click();
+  await expect(page.getByText('离岗前已核对第一部分，剩余内容由接手人继续。', { exact: true })).toBeVisible();
+  await page.reload();
+  await expect(page.getByText('离岗前已核对第一部分，剩余内容由接手人继续。', { exact: true })).toBeVisible();
+});
+
+test('人员归档明确提示项目经理职责需要先移交', async ({ page }) => {
+  const { project, owner, detail } = await fixture(page);
+  const grant = await page.request.put(`/api/projects/${project.id}/members/${owner.id}`, { data: { role: 'manager' } });
+  expect(grant.ok(), await grant.text()).toBe(true);
+  const before = await detail();
+  await page.goto('/resources');
+  await page.getByRole('button', { name: `打开${owner.name}操作`, exact: true }).click();
+  await page.getByRole('menuitem', { name: '归档人员', exact: true }).click();
+  const archive = page.getByRole('dialog', { name: '归档人员', exact: true });
+  await archive.getByRole('button', { name: '确认归档', exact: true }).click();
+  await expect(archive.getByRole('alert')).toContainText('该人员仍担任1个项目的项目经理，请先在对应项目完成移交');
+  await expect(archive).not.toContainText('账号或人员状态已变化');
+  expect(await detail()).toEqual(before);
+});
+
 test('执行中调整协作者自动记录变更；两人失效后可逐步移除并交接', async ({ page }) => {
   const { r, owner, previous, next, detail, disable } = await fixture(page);
   const w = (await detail()).workItems[0];
@@ -150,7 +218,7 @@ test('新建和编辑需求不会重新选择停用账号，历史负责人保�
   await expect(nativeOwner).toHaveValue(enabledOwners[1].value);
   expect(writes).toHaveLength(0);
   await dialog.getByRole('button',{name:'保存信息',exact:true}).click();
-  await expect(page.getByRole('button',{name:'保存信息',exact:true})).toHaveCount(0);
+  await expect(page.getByRole('dialog',{name:'编辑需求信息',exact:true})).toHaveCount(0);
   expect(writes).toHaveLength(1);
   expect(await (await page.request.get('/api/requirements/'+r.id)).json()).toMatchObject({ownerId:enabledOwners[1].value,title:r.title,status:r.status,progress:r.progress,version:r.version+1});
 });

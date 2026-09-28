@@ -12,7 +12,7 @@ async function fixture(page: Page, browser: Browser, baseURL: string) {
   const project = await post(page.request, '/api/projects', { name: '我的工作旅程' + Date.now() });
   const owner = await post(page.request, '/api/people', { projectId: project.id, name: '交付负责人' + Date.now() });
   const member = await post(page.request, '/api/people', { projectId: project.id, name: '协作执行人' + Date.now() });
-  const r = await post(page.request, '/api/requirements', { projectId: project.id, title: '成员交付旅程', ownerId: owner.id });
+  const r = await post(page.request, '/api/requirements', { projectId: project.id, title: '成员交付旅程', ownerId: owner.id, background: '交接班需要查看接口核对结果。', acceptanceCriteria: '刷新后仍可查看核对记录。' });
   await post(page.request, `/api/requirements/${r.id}/work-items`, { expectedVersion: r.version, title: '核对接口并交付', ownerId: owner.id, collaboratorIds: [member.id] });
   const detail = async () => (await (await page.request.get('/api/requirements/' + r.id)).json()) as Requirement;
   const work = (await detail()).workItems[0];
@@ -41,21 +41,35 @@ for (const trigger of ['return', 'interval'] as const) test(`其他账号开工�
   } finally { await context.close(); }
 });
 
-test('普通协作成员经我的工作开始、更新完成度并完成，需求随工作完成', async ({ page, browser, baseURL }) => {
+test('普通协作成员经我的工作阅读需求、返回执行并完成，需求随工作完成', async ({ page, browser, baseURL }) => {
   const { actor, context, detail, work, myWork } = await fixture(page, browser, baseURL!);
   try {
     await actor.goto('/my-work');
+    await actor.getByRole('button', { name: work.title, exact: true }).click();
+    const itemDetail = actor.getByRole('dialog');
+    await itemDetail.getByRole('tab', { name: '资料', exact: true }).click();
+    const workspaceUrl = new URL(actor.url());
+    await itemDetail.getByRole('button', { name: '需求说明', exact: true }).click();
+    const introduction = itemDetail.getByRole('region', { name: '需求说明', exact: true });
+    await expect(introduction.getByText('交接班需要查看接口核对结果。', { exact: true })).toBeVisible();
+    await expect(introduction.getByText('刷新后仍可查看核对记录。', { exact: true })).toBeVisible();
+    await itemDetail.getByRole('button', { name: '返回' + work.title, exact: true }).click();
+    await expect(itemDetail.getByRole('tab', { name: '资料', exact: true })).toHaveAttribute('aria-selected', 'true');
+    await expect(actor).toHaveURL(url => ['projectId', 'workspaceView', 'scopeType', 'scopeId', 'detailId', 'detailTab'].every(key => url.searchParams.get(key) === workspaceUrl.searchParams.get(key)));
+    await itemDetail.getByRole('button', { name: '关闭', exact: true }).click();
+    await actor.getByRole('link', { name: '我的工作', exact: true }).click();
     const start = actor.getByRole('button', { name: '开始', exact: true });
     await expect(start).toBeEnabled();
     await start.click();
     await expect(actor.getByRole('button', { name: `为${work.title}更新进度`, exact: true })).toBeVisible();
     await actor.getByRole('button', { name: `为${work.title}更新进度`, exact: true }).click();
     const progress = actor.getByRole('dialog', { name: '更新工作项进度', exact: true });
-    await progress.getByRole('spinbutton').fill('60');
-    await progress.getByLabel(/^说明/).fill('接口核对完成六成');
+    await progress.getByRole('spinbutton').fill('67');
+    await expect(progress.getByRole('slider')).toHaveValue('67');
+    await progress.getByLabel(/^说明/).fill('接口核对完成67%');
     await progress.getByRole('button', { name: '保存进展', exact: true }).click();
     await expect(progress).toHaveCount(0);
-    expect((await detail()).progress).toBe(60);
+    expect((await detail()).progress).toBe(67);
     await actor.getByRole('button',{name:'完成',exact:true}).first().click();
     await actor.getByLabel('完成说明（可选）', { exact: true }).fill('对端核对完成，交付验证通过');
     await actor.getByRole('button', { name: '确认完成', exact: true }).click();

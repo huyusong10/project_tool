@@ -27,6 +27,7 @@ import { projectStatusOptions } from "../ui-options";
 import { hasWorkdayCalendarFallback } from '../../shared/workday';
 import { canonicalizeLabel } from "../../shared/search";
 import { useToast } from "./Toast";
+import { RequirementPlanPreview } from '../features/requirements/RequirementPlanPreview';
 
 export type ProjectFormInput = {
   guestVisible?: boolean;
@@ -215,8 +216,8 @@ export function ProjectForm({
       {project && <FormField label="游客浏览" full asLabel={false} help="开放后，无需登录即可查看项目空间、对象说明和关联链接。问题、个人事务和管理功能仍需授权。">
         <label className="checkbox-label"><input type="checkbox" checked={guestVisible} onChange={event => setGuestVisible(event.target.checked)}/><span>允许游客查看</span></label>
       </FormField>}
-      <FormField label="默认流程" full>
-        <select name="defaultTemplateId" value={defaultTemplateId} onChange={(event) => setDefaultTemplateId(event.target.value)}>
+      <FormField label="默认流程" full help="新建需求时可在流程设计中选择标记为项目默认的流程；不选流程时直接执行。更换默认流程不影响已有需求。">
+        <select aria-label="默认流程" name="defaultTemplateId" value={defaultTemplateId} onChange={(event) => setDefaultTemplateId(event.target.value)}>
           <option value="">不指定</option>
           {defaultTemplateId && !templates.some((template) => template.id === defaultTemplateId) && <option value={defaultTemplateId}>已不可用的流程（请重新选择）</option>}
           {templates.map((template) => <option value={template.id} key={template.id}>{template.name}</option>)}
@@ -237,22 +238,30 @@ export function ProjectForm({
 
 export function RequirementForm({
   projectId, defaultFeatureId, defaultPhaseId,
+  initialInput, draftKey, createRequest,
   initialRequirementIds,
   recheck,
   onRecheckChange,
+  onCreated,
   onClose,
 }: {
   projectId: string;
+  initialInput?: Partial<RequirementFormInput>;
+  draftKey?: string;
+  createRequest?: (input: RequirementFormInput) => Promise<Requirement>;
   defaultFeatureId?:string;defaultPhaseId?:string;
   initialRequirementIds:string[];
   recheck:RequirementCreateRecheck|null;
   onRecheckChange:(value:RequirementCreateRecheck|null)=>void;
+  onCreated?: (requirement: Requirement) => void;
   onClose: () => void;
 }) {
   const client = useQueryClient();
   const toast=useToast(),{session}=useSession();
+  const { projects } = useProjects();
+  const defaultTemplateId = projects.find(project => project.id === projectId)?.defaultTemplateId;
   const submitting = useRef(false);
-  const [local,setLocal,clearLocal]=useDeliveryForm<RequirementFormInput>(projectId,'new-requirement:'+ (defaultPhaseId||defaultFeatureId||'project'),()=>recheck?.draft||{projectId,title:'',ownerId:'',background:'',acceptanceCriteria:'',referenceUrl:'',featureId:defaultFeatureId,phaseId:defaultPhaseId},!!recheck);
+  const [local,setLocal,clearLocal]=useDeliveryForm<RequirementFormInput>(projectId,'new-requirement:'+ (draftKey||defaultPhaseId||defaultFeatureId||'project'),()=>recheck?.draft||{projectId,title:'',ownerId:'',background:'',acceptanceCriteria:'',referenceUrl:'',featureId:defaultFeatureId,phaseId:defaultPhaseId,...initialInput},!!recheck);
   const initial=recheck?.draft||local;
   const unknown=Boolean(recheck);
   const [checking,setChecking]=useState(false),[checkError,setCheckError]=useState('');
@@ -275,18 +284,18 @@ export function RequirementForm({
   const templates = templatesQuery.data || [];
   const people = peopleQuery.data || [];
   const mutation = useMutation({
-    mutationFn: async (data: RequirementFormInput) => {await assertCleanProjectDraft(session.accountId||'guest',projectId,data.phaseId?{requirementId:'',phaseId:data.phaseId,action:'phase'}:undefined);return requirementsApi.createRequirement(data);},
+    mutationFn: async (data: RequirementFormInput) => {await assertCleanProjectDraft(session.accountId||'guest',projectId,data.phaseId?{requirementId:'',phaseId:data.phaseId,action:'phase'}:undefined);return createRequest ? createRequest(data) : requirementsApi.createRequirement(data);},
     onMutate:data=>onRecheckChange({draft:data,baselineIds:recheck?.baselineIds||initialRequirementIds}),
     onSuccess: () => {
       onRecheckChange(null);
       invalidateRequirementViews(client);
-      clearLocal();onClose();
+      clearLocal();
     },
     onError: error=>{if(!isWriteOutcomeUnknown(error))onRecheckChange(null);},
     onSettled: () => { submitting.current = false; },
   });
   const matchesDraft=(item:Requirement,draft:RequirementFormInput)=>item.projectId===projectId&&item.title===canonicalizeLabel(draft.title)&&item.ownerId===(draft.ownerId||null)&&item.background===(draft.background.trim()||null)&&item.acceptanceCriteria===(draft.acceptanceCriteria.trim()||null)&&(draft.referenceLinks!==undefined?referenceLinksEqual(item.referenceLinks,draft.referenceLinks):item.referenceUrl===(draft.referenceUrl.trim()||null))&&(!draft.featureId||item.featureId===draft.featureId)&&(item.phaseId||null)===(draft.phaseId||null)&&(!draft.templateId||item.templateId===draft.templateId)&&(!draft.plannedStart||item.plannedStart===draft.plannedStart)&&(!draft.plannedEnd||item.plannedEnd===draft.plannedEnd);
-  const checkLatest=async()=>{if(!recheck||checking)return;setChecking(true);setCheckError('');try{const latest=await requirementsApi.requirementsQuery<Requirement[]>(encodeURIComponent(projectId), {readOnly:true});client.setQueryData([...keys.requirements,projectId],latest);const baseline=new Set(recheck.baselineIds),created=latest.filter(item=>!baseline.has(item.id)&&matchesDraft(item,recheck.draft));if(created.length===1){onRecheckChange(null);invalidateRequirementViews(client,created[0].id);toast.success('已核对最新状态：需求已创建');clearLocal();onClose();return;}if(created.length===0){onRecheckChange(null);mutation.reset();setCheckError('未发现本次新增需求，已恢复原输入，可以重新提交。');return;}setCheckError('发现多个可能的新需求，暂不解除锁定，请核对需求列表和操作记录。');}catch(error){setCheckError(error instanceof Error?error.message:'需求列表读取失败');}finally{setChecking(false);}};
+  const checkLatest=async()=>{if(!recheck||checking)return;setChecking(true);setCheckError('');try{const latest=await requirementsApi.requirementsQuery<Requirement[]>(encodeURIComponent(projectId), {readOnly:true});client.setQueryData([...keys.requirements,projectId],latest);const baseline=new Set(recheck.baselineIds),created=latest.filter(item=>!baseline.has(item.id)&&matchesDraft(item,recheck.draft));if(created.length===1){onRecheckChange(null);invalidateRequirementViews(client,created[0].id);toast.success('已核对最新状态：需求已创建');clearLocal();onClose();onCreated?.(created[0]);return;}if(created.length===0){onRecheckChange(null);mutation.reset();setCheckError('未发现本次新增需求，已恢复原输入，可以重新提交。');return;}setCheckError('发现多个可能的新需求，暂不解除锁定，请核对需求列表和操作记录。');}catch(error){setCheckError(error instanceof Error?error.message:'需求列表读取失败');}finally{setChecking(false);}};
   return (
     <Modal title="新建需求" closable={!mutation.isPending} onClose={() => { if (!submitting.current) onClose(); }}>
     <form
@@ -294,7 +303,8 @@ export function RequirementForm({
         event.preventDefault();
         if (submitting.current||unknown) return;
         submitting.current = true;
-        mutation.mutate({title,ownerId,background,acceptanceCriteria,referenceUrl,referenceLinks,featureId:featureId||null,phaseId:phaseId||null,reason:placementReason||undefined,templateId:templateId||undefined,projectId,...(scheduleDate?(scheduleMode==='start'?{plannedStart:scheduleDate}:{plannedEnd:scheduleDate}):{})});
+        // Open the saved object after the mutation settles, respecting the workspace write guard.
+        mutation.mutate({title,ownerId,background,acceptanceCriteria,referenceUrl,referenceLinks,featureId:featureId||null,phaseId:phaseId||null,reason:placementReason||undefined,templateId:templateId||undefined,projectId,...(scheduleDate?(scheduleMode==='start'?{plannedStart:scheduleDate}:{plannedEnd:scheduleDate}):{})}, {onSuccess:created=>{onClose();onCreated?.(created);}});
       }}
     >
       <fieldset className="form-grid form-fieldset" disabled={mutation.isPending}>
@@ -314,7 +324,7 @@ export function RequirementForm({
           <Select name="templateId" value={templateId} onChange={(event) => setTemplateId(event.target.value)}>
             <option value="">暂不选择流程</option>
             {templateId && !templates.some((template) => template.id === templateId) && <option value={templateId}>{templatesQuery.data === undefined ? "项目默认流程（正在加载）" : "已不可用的流程（请重新选择）"}</option>}
-            {templates.map((template) => <option key={template.id} value={template.id}>{template.name}</option>)}
+            {templates.map((template) => <option key={template.id} value={template.id}>{template.name}{template.id === defaultTemplateId ? '（项目默认）' : ''}</option>)}
           </Select>
         </FormField>
         <div className="field field-full">
@@ -346,6 +356,7 @@ export function RequirementForm({
           <input key={scheduleMode} name={scheduleMode === "start" ? "plannedStart" : "plannedEnd"} type="date" value={scheduleDate} onChange={(event) => setScheduleDate(event.target.value)} />
         </FormField>
         <>{hasWorkdayCalendarFallback([scheduleDate])&&<p role="status" className="field-help field-full">该日期超出当前法定工作日日历覆盖范围，将按周一至周五计算。</p>}</>
+        <RequirementPlanPreview projectId={projectId} featureId={featureId} phaseId={phaseId} template={templates.find(template => template.id === templateId)} date={scheduleDate} mode={scheduleMode}/>
         <p className="field-help field-full">不选流程时直接执行；选定流程后生成工作项。日期可留空，后续再预览排期。{scheduleMode === "deadline" ? " 截止日期需为工作日。" : ""}</p>
       </FormDisclosure>
       {(templatesQuery.error || peopleQuery.error) && <div className="warning-banner field-full">部分辅助选项加载失败，仍可创建直接执行需求并稍后补充。<Button variant="secondary" type="button" className="ghost-button" disabled={templatesQuery.isFetching || peopleQuery.isFetching} onClick={() => void Promise.all([templatesQuery.refetch(), peopleQuery.refetch()])}>重新加载</Button></div>}

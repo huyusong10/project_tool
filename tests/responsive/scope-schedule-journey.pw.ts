@@ -1,0 +1,48 @@
+import {expect,test} from '@playwright/test';
+import {phaseFixture} from './phase-fixture';
+import {addBusinessDays,todayIso} from '../../src/shared/domain';
+
+test('范围评审的排期预览跟随特性和 Phase，返回刷新后保持',async({page})=>{
+  const f=await phaseFixture(page);
+  const create=async(title:string,featureId?:string)=>{
+    const response=await page.request.post('/api/requirements',{data:{projectId:f.projectId,title,featureId,plannedStart:addBusinessDays(todayIso(),0),plannedEnd:addBusinessDays(todayIso(),3)}});
+    expect(response.ok(),await response.text()).toBe(true);return response.json();
+  };
+  const unphased=await create('本特性未分派交付',f.feature.id),outside=await create('其他特性交付');
+  const read=async(id:string)=>(await(await page.request.get('/api/requirements/'+id)).json());
+  const before=await Promise.all([read(f.testing.id),read(f.direct.id),read(unphased.id),read(outside.id)]);
+  const url=(scopeType:string,scopeId:string,workspaceView='list')=>'/?'+new URLSearchParams({projectId:f.projectId,workspaceView,scopeType,scopeId,...workspaceView==='graph'?{pathPanel:'schedule'}:{}});
+  const toolbar=page.getByRole('region',{name:'页面工具栏'});
+  const timeline=page.getByLabel('排期预览时间轴，可左右拖动浏览',{exact:true});
+  const rows=timeline.locator('.path-gantt-name');
+  await page.goto(url('feature',f.feature.id));
+  await toolbar.getByRole('button',{name:'关系图',exact:true}).click();
+  await page.getByRole('button',{name:'排期预览',exact:true}).click();
+  await expect(rows).toHaveCount(4);
+  await expect(timeline.getByRole('button',{name:new RegExp(outside.title)})).toHaveCount(0);
+  await expect(timeline.getByRole('button',{name:new RegExp(unphased.title)})).toBeVisible();
+  await toolbar.getByRole('button',{name:'清单',exact:true}).click();
+  await page.getByRole('button',{name:'进入Phase 2',exact:true}).click();
+  await toolbar.getByRole('button',{name:'关系图',exact:true}).click();
+  if(!await timeline.isVisible())await page.getByRole('button',{name:'排期预览',exact:true}).click();
+  await expect(rows).toHaveCount(2);
+  await expect(timeline.getByRole('button',{name:new RegExp(f.testing.title)})).toBeVisible();
+  await expect(timeline.getByRole('button',{name:new RegExp(f.direct.title)})).toBeVisible();
+  await page.reload();
+  await expect(rows).toHaveCount(2);
+  await toolbar.getByRole('button',{name:'进展表',exact:true}).click();
+  await expect(page.getByRole('button',{name:f.testing.title,exact:true})).toBeVisible();
+  await expect(page.getByRole('button',{name:outside.title,exact:true})).toHaveCount(0);
+  await page.goBack();
+  await expect(rows).toHaveCount(2);
+  await page.setViewportSize({width:390,height:844});
+  await expect(page.getByRole('heading',{name:'交付排期预览',exact:true})).toBeVisible();
+  expect(await page.locator('.graph-auxiliary').evaluate(element=>element.scrollWidth<=element.clientWidth+1)).toBe(true);
+  await page.goto(url('unphased',f.feature.id,'graph'));
+  await expect(rows).toHaveCount(1);
+  await expect(timeline.getByRole('button',{name:new RegExp(unphased.title)})).toBeVisible();
+  await page.goto(url('phase',f.phases[2].id,'graph'));
+  await expect(timeline).toHaveCount(0);
+  await expect(page.getByText('当前没有可展示的日期，先确认工期和交付条件。',{exact:false})).toBeVisible();
+  expect(await Promise.all([read(f.testing.id),read(f.direct.id),read(unphased.id),read(outside.id)])).toEqual(before);
+});

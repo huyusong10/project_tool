@@ -7,7 +7,7 @@ import { usePageResources } from '../page-context';
 import { usePageScrollPosition } from '../use-page-view';
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Archive, Edit3, Plus } from "lucide-react";
+import { Archive, Copy, Edit3, Plus } from "lucide-react";
 import { isWriteOutcomeUnknown, jsonBody, requiresWriteRecheck } from "../api";
 import { useProjects, useSession } from "../app-context";
 import { invalidateTemplateViews, keys } from "../query-keys";
@@ -15,11 +15,12 @@ import type { Archives, WorkItemTemplate } from "../types";
 import { ConfirmDialog, Modal } from "../components/Modal";
 import { PageHeader } from "../components/PageHeader";
 import { canManageProject } from "../permissions";
-import { TemplateForm } from "../components/TemplateForm";
+import { createTemplateCopyDraft, TemplateForm } from "../components/TemplateForm";
 import { EmptyState } from "../components/Feedback";
 import { templateOverview } from '../template-overview';
 import { TemplateThumbnail } from '../components/TemplateThumbnail';
 import { TemplatePreview } from '../components/TemplatePreview';
+import { TemplateReuseDialog } from '../components/TemplateReuseDialog';
 import '../components/template-overview.css';
 
 const emptyTemplates: WorkItemTemplate[] = [];
@@ -55,12 +56,13 @@ export function TemplatesPage() {
   const [params,setParams]=useAppSearchParams();
   const [editingSnapshot,setEditingSnapshot]=useState<WorkItemTemplate|null>(null);
   const [preview, setPreview] = useState<WorkItemTemplate | null>(null);
+  const [reuseOpen, setReuseOpen] = useState(false);
   const setEditing=(value:WorkItemTemplate|null|undefined)=>{setEditingSnapshot(value||null);const next=new URLSearchParams(params);next.set('projectId',selectedProjectId);next.delete('templateNode');if(value)next.delete('draft');if(value===undefined)next.delete('edit');else next.set('edit',value?.id||'new');setParams(next);};
   const [archiveTarget, setArchiveTarget] = useState<WorkItemTemplate | null>(null);
   const [archiveRecheck,setArchiveRecheckState]=useState<WorkItemTemplate|null>(()=>readTemplateArchiveRecheck(recheckAccountKey,selectedProjectId));
   const [archiveRechecking,setArchiveRechecking]=useState(false),archiveNeedsReopen=Boolean(archiveRecheck);
   const setArchiveRecheck=(value:WorkItemTemplate|null)=>{persistTemplateArchiveRecheck(recheckAccountKey,selectedProjectId,value);setArchiveRecheckState(value);};
-  useEffect(()=>{setArchiveRecheckState(readTemplateArchiveRecheck(recheckAccountKey,selectedProjectId));setArchiveTarget(null);setPreview(null);},[recheckAccountKey,selectedProjectId]);
+  useEffect(()=>{setArchiveRecheckState(readTemplateArchiveRecheck(recheckAccountKey,selectedProjectId));setArchiveTarget(null);setPreview(null);setReuseOpen(false);},[recheckAccountKey,selectedProjectId]);
   const archiveSubmitting = useRef(false);
   const createButton=useRef<HTMLButtonElement>(null),archiveReturnFocus=useRef<HTMLElement|null>(null);
   const {data: loadedTemplates, error, refetch, isFetching, isLoading} = usePageResources().templates;
@@ -123,13 +125,21 @@ export function TemplatesPage() {
       <PageHeader
         title="流程设计"
         actions={canManage ? (
+          <><Button variant="secondary" onClick={() => setReuseOpen(true)}><Copy size={16} />复用已有流程</Button>
           <Button ref={createButton} variant="primary" className="primary-button" onClick={() => setEditing(null)}>
             <Plus size={16} />
             新建流程
-          </Button>
+          </Button></>
         ) : null}
       />
       <div className="page-content">
+        {reuseOpen && canManage && <TemplateReuseDialog onClose={() => setReuseOpen(false)} onSelect={async template => {
+          const draftId = await createTemplateCopyDraft(session.accountId || 'guest', selectedProjectId, template);
+          setEditingSnapshot(null); setReuseOpen(false);
+          const next = new URLSearchParams(params);
+          next.set('projectId', selectedProjectId); next.set('edit', 'new'); next.set('draft', draftId); next.delete('templateNode');
+          setParams(next);
+        }} />}
         {archiveRecheck&&<div role="alert" className="warning-banner">“{archiveRecheck.name}”的流程归档结果待核对，其他归档操作暂不可用。<Button busy={(archiveRechecking)} aria-label={archiveRechecking?'读取中…':'重新读取流程与归档'} variant="secondary" type="button" className="ghost-button" disabled={archiveRechecking} onClick={()=>void recheckTemplateArchive()}>{'重新读取流程与归档'}</Button></div>}
         {error && loadedTemplates && <div className="warning-banner">流程列表刷新失败，当前展示的是上次成功结果。<Button variant="secondary" className="ghost-button" disabled={isFetching} onClick={() => void refetch()}>重新加载</Button></div>}
         {listUnavailable ? <EmptyState title="流程列表加载失败" detail={error?.message || "暂时无法读取流程设计。"} action={<Button variant="secondary" className="ghost-button" disabled={isFetching} onClick={() => void refetch()}>重新加载</Button>} /> : <>

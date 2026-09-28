@@ -4,6 +4,7 @@ import { fail, notFound } from '../errors';
 import { isTerminalRequirementStatus, isTerminalWorkItemStatus } from '../../shared/domain';
 import { canonicalizeContent, canonicalizeLabel, textSafetyIssue } from '../../shared/search';
 import { isValidIsoDate } from '../../shared/workday';
+import { workStageLabels, type WorkStage } from '../../shared/execution-stage';
 
 export type JsonObject = Record<string, unknown>;
 
@@ -99,10 +100,23 @@ export function nullableText(value: unknown) {
 
 /** Factual fallback for optional explanations; never invent a user's reason. */
 export function describeChanges(current: object, input: JsonObject) {
-  const labels: Record<string,string> = { title:'名称', ownerId:'负责人ID', assigneeIds:'执行人员ID', plannedStart:'计划开始', plannedEnd:'计划完成', actualStart:'实际开始', actualEnd:'实际完成', resolvedAt:'解决日期', progress:'完成度', background:'说明', impact:'影响', acceptanceCriteria:'完成标准', referenceUrl:'来源链接',referenceLinks:'关联链接', featureId:'特性ID',phaseId:'Phase ID',workStage:'工作阶段',milestoneKind:'节点含义', supersedesId:'关联历史记录' };
+  const labels: Record<string,string> = { title:'名称', ownerId:'负责人', assigneeIds:'执行人员', collaboratorIds:'协作人员', plannedStart:'计划开始', plannedEnd:'计划完成', actualStart:'实际开始', actualEnd:'实际完成', resolvedAt:'解决日期', progress:'完成度', background:'说明', impact:'影响', acceptanceCriteria:'完成标准', referenceUrl:'来源链接',referenceLinks:'关联链接', featureId:'特性ID',phaseId:'Phase ID',workStage:'工作阶段',milestoneKind:'节点含义', supersedesId:'关联历史记录', requirementId:'关联需求', sourceRef:'范围标识', reporter:'提出人', priority:'优先级', discoveredAt:'发现日期', dueDate:'目标日期', nextReviewAt:'下次核对日期' };
   const before=current as JsonObject;
-  const display=(v:unknown)=>v===undefined||v===null||v===''?'未设置':Array.isArray(v)?v.join('、'):String(v);
-  const changes=Object.entries(input).filter(([key,value])=>key in labels&&JSON.stringify(value)!==JSON.stringify(before[key])).map(([key,value])=>`${labels[key]}：${key==='referenceLinks'?readReferenceLinks(before[key]).map(l=>l.title+' ('+l.url+')').join('、')||'未设置':display(before[key])} → ${key==='referenceLinks'?readReferenceLinks(value).map(l=>l.title+' ('+l.url+')').join('、')||'未设置':display(value)}`);
+  const fields=Object.entries(input).filter(([key,value])=>key in labels&&JSON.stringify(value)!==JSON.stringify(before[key]));
+  const peopleFields=new Set(['ownerId','assigneeIds','collaboratorIds']);
+  const personIds=[...new Set(fields.filter(([key])=>peopleFields.has(key)).flatMap(([key,value])=>[before[key],value].flat()).filter((id):id is string=>typeof id==='string'&&!!id))];
+  const names=new Map(chunkValues(personIds).flatMap(ids=>rows<{id:string;name:string}>(`SELECT id,name FROM people WHERE id IN (${ids.map(()=>'?').join(',')})`,...ids)).map(person=>[person.id,person.name]));
+  const requirementIds=[...new Set(fields.filter(([key])=>key==='requirementId').flatMap(([key,value])=>[before[key],value]).filter((id):id is string=>typeof id==='string'&&!!id))];
+  const requirementNames=new Map(chunkValues(requirementIds).flatMap(ids=>rows<{id:string;title:string}>(`SELECT id,title FROM requirements WHERE id IN (${ids.map(()=>'?').join(',')})`,...ids)).map(requirement=>[requirement.id,requirement.title]));
+  const display=(key:string,value:unknown):string=>{
+    if(key==='workStage')return value===undefined||value===null||value===''?'未分类':Object.hasOwn(workStageLabels,String(value))?workStageLabels[value as WorkStage]:String(value);
+    if(key==='referenceLinks')return readReferenceLinks(value).map(link=>link.title+' ('+link.url+')').join('、')||'未设置';
+    if(Array.isArray(value))return value.map(item=>display(key,item)).join('、')||'未设置';
+    if(value===undefined||value===null||value==='')return '未设置';
+    if(key==='requirementId')return requirementNames.get(String(value))||String(value);
+    return peopleFields.has(key)?names.get(String(value))||String(value):String(value);
+  };
+  const changes=fields.map(([key,value])=>`${labels[key]}：${display(key,before[key])} → ${display(key,value)}`);
   return changes.length?changes.join('；'):'修正历史记录';
 }
 

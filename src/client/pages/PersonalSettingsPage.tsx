@@ -16,6 +16,7 @@ import { FormError, FormField, FormSubmitActions } from "../components/Form";
 import { LoadingState } from "../components/Feedback";
 import { copyText as writeClipboardText } from "../clipboard";
 import { useMinuteClock } from "../use-minute-clock";
+import { JiraConnectionPanel } from '../features/jira/JiraConnectionPanel';
 
 type TokenRecheckKind = "create" | "revoke";
 
@@ -156,6 +157,7 @@ export function PersonalSettingsPage() {
           <div><dt>MCP 权限</dt><dd>随账号权限同步</dd></div>
         </dl>
       </section>
+      <JiraConnectionPanel />
       <section className="panel personal-mcp-panel">
         <header><div><h2>MCP 接入</h2><p>为本机客户端创建独立凭据，Token 自动继承当前账号的项目权限</p></div></header>
         <div className="personal-mcp-connection">

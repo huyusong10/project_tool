@@ -22,7 +22,7 @@ const archiveEntityOptions = [
   { value: "projects", label: "项目" },
   { value: "requirements", label: "需求" },
   { value: "people", label: "人员" },
-  { value: "templates", label: "模板" },
+  { value: "templates", label: "流程" },
 ] as const;
 type ArchiveEntity = (typeof archiveEntityOptions)[number]["value"];
 type ArchiveRecheck = "restore" | "delete" | null;

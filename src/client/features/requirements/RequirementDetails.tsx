@@ -17,6 +17,8 @@ import { PageResourcesContext, usePageResources } from "../../page-context";
 import { Pagination } from "../../components/Pagination";
 import { useListPagination } from "../../use-list-pagination";
 import { RequirementOverview } from "../../components/RequirementOverview";
+import { JiraRequirement } from '../jira/JiraRequirement';
+import { jiraProgressSyncLabels } from '../../../shared/jira-pr';
 import { RequirementSources } from "../../components/RequirementSources";
 import { hasPageHistory, usePageBack } from "../../use-page-view";
 import { useEffect, useMemo, useRef, useState, type ComponentProps } from "react";
@@ -300,6 +302,7 @@ export function RequirementObjectContent({requirementId,embedded=false,selectedW
                     <span><small>距上次记录</small>{metadata.elapsedLabel}</span>
                     <span><small>操作人</small>{item.createdByName || "系统记录"}</span>
                     <span><small>需求总进度</small>{item.percent}%</span>
+                    <span title={item.jiraManualReason || undefined}><small>Jira</small>{item.jiraManualAccountId ? '已同步（人工确认）' : jiraProgressSyncLabels[item.jiraSyncState || 'pending']}</span>
                   </footer>
                   {item.supersedesId && <small className="progress-correction-reference">更正：{progressReferenceLabel(progressById.get(item.supersedesId))}</small>}
                 </div>
@@ -316,7 +319,7 @@ export function RequirementObjectContent({requirementId,embedded=false,selectedW
   return <div className={embedded ? "requirement-page embedded-requirement" : "page-content requirement-page"}>
     {error && <RefreshNotice pending={isFetching} onRetry={() => void refetch()} />}
     <DetailWorkspace label="需求详情" initialTab="overview" actions={requirementHeader} tabs={[
-      {id: 'overview', label: '概况', description:'需求说明与执行进展', content: <>{notices}<RequirementOverview requirement={requirement} compact={embedded} onArrangeSchedule={arrangeSchedule}/></>},
+      {id: 'overview', label: '概况', description:'需求说明与执行进展', content: <>{notices}<RequirementOverview requirement={requirement} compact={embedded} onArrangeSchedule={arrangeSchedule}/>{!guest&&<JiraRequirement projectId={requirement.projectId} requirementId={requirement.id}/>}</>},
       {id: 'work', label: `工作项 ${requirement.workItems.length}`, content: workList},
       {id: 'basic', label: '资料', description:'背景与验收信息', content: <><DetailCard title="需求资料"><dl className="object-facts"><div><dt>所属特性 / Phase</dt><dd>{requirement.featureName||'未关联特性'} / {requirement.phaseName||'未分派阶段'}</dd></div><div className="object-fact-wide"><dt>说明</dt><dd>{requirement.background||'尚未填写'}</dd></div><div className="object-fact-wide"><dt>完成标准</dt><dd>{requirement.acceptanceCriteria||'尚未填写'}</dd></div></dl>{!!requirement.readinessIssues?.length && <p className="object-info-note">{requirement.readinessIssues.join('；')}</p>}</DetailCard><RequirementSources links={requirement.referenceLinks} notes={requirement.sourceNotes} referenceUrl={requirement.referenceUrl}/></>},
       {id: 'dependencies', label: '依赖', actions: <Button variant="secondary" aria-label="在关系图中查看依赖" title="在关系图中查看依赖" onClick={openPathView}>查看依赖</Button>, content: <ObjectDependencies requirementId={id} onOpenGraph={openPathView}/>},

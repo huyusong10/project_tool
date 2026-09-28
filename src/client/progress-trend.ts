@@ -41,10 +41,10 @@ export function progressHistoryMetadata(updates: ProgressUpdate[]) {
   const previousValue = new Map<string, number>();
   for (const update of [...updates].reverse()) {
     const context = update.workItemId ? `work-item:${update.workItemId}` : "requirement";
-    const currentValue = progressUpdateDisplayValue(update);
+    const currentValue = update.eventType === 'note' ? null : progressUpdateDisplayValue(update);
     const oldValue = previousValue.get(context);
     const transitionLabel = currentValue === null
-      ? "—"
+      ? update.eventType === 'note' ? "说明" : "—"
       : oldValue === undefined
         ? `首次 · ${currentValue}%`
         : `${oldValue} → ${currentValue}%`;

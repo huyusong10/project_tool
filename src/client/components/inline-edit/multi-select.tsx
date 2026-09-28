@@ -24,11 +24,13 @@ export function InlineMultiSelectCell<TRevision extends Revision = number>({
   renderValue,
   excludedValues = [],
   reason,
+  showSaveFeedback,
 }: BaseProps<TRevision> & {
   value: string[];
   options: InlineOption[];
   onSave: (value: string[], expectedRevision?: TRevision, reason?: string) => Promise<unknown>;
   reason?: EditReason;
+  showSaveFeedback?: boolean;
   renderValue?: (selected: InlineOption[]) => ReactNode;
   excludedValues?: string[];
 
@@ -97,7 +99,7 @@ export function InlineMultiSelectCell<TRevision extends Revision = number>({
     : selected.map((option) => option.label).join("、") || <span className="is-placeholder">{placeholder}</span>;
   const fullText = selected.map((option) => option.label).join("、") || placeholder;
   return <div ref={anchorRef} className="inline-edit-anchor">
-    <EditableCell label={label} display={display} fullText={fullText} open={open} disabled={disabled} state={feedback.state} error={feedback.error} displayMode={displayMode} className={className} onOpen={() => {
+    <EditableCell label={label} display={display} fullText={fullText} open={open} disabled={disabled} state={feedback.state} error={feedback.error} showSaveFeedback={showSaveFeedback} displayMode={displayMode} className={className} onOpen={() => {
       if (feedback.state !== "error") { setDraft(value); setReasonText(""); }
       if (feedback.state !== "error") revisionGuard.capture();
       feedback.clearError();

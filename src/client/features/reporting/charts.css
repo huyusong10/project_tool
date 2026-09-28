@@ -7,6 +7,10 @@
 .analytics-table th { position: sticky; top: 0; z-index: 1; padding: 8px 10px; color: var(--text-faint); background: var(--bg-surface-subtle); text-align: left; }
 .analytics-table td { padding: 9px 10px; border-top: 1px solid var(--divider); color: var(--text-secondary); }
 .analytics-table th:not(:first-child), .analytics-table td:not(:first-child) { text-align: right; }
+.analytics-chart-unit { margin: 0 0 4px; color: var(--text-muted); font-size: 12px; }
+.analytics-requirement-details { margin-top: 8px; }
+.analytics-requirement-details > summary { padding: 6px 0; color: var(--accent); cursor: pointer; font-size: 13px; }
+.analytics-requirement-link { white-space: normal; overflow-wrap: anywhere; text-align: left; }
 .analytics-panel-editor { display: grid; grid-template-columns: minmax(410px,.9fr) minmax(460px,1.1fr); gap: 18px; }
 .analytics-config-form { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); align-content: start; gap: 12px; }
 .analytics-config-form .field-full { grid-column: 1 / -1; }

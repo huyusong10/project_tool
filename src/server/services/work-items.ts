@@ -63,6 +63,7 @@ export function createWorkItem(requirementId: string, input: JsonObject, actor: 
   }
   if (['pending_acceptance', 'completed', 'cancelled'].includes(requirement.status)) fail('当前需求已锁定，不能新增工作项', 'TERMINAL_LOCKED');
   const id = randomUUID(); const now = nowIso(); const title = requireLabel(input.title, '工作项标题');
+  const reason = nullableText(input.reason);
   const referenceLinks=normalizeReferenceLinks(input.referenceLinks||[]);
   const max = row<{ value: number | null }>('SELECT MAX(sort_order) AS value FROM work_items WHERE requirement_id=?', requirementId)?.value ?? -1;
   const ownerId = nullableText(input.ownerId);
@@ -92,7 +93,9 @@ export function createWorkItem(requirementId: string, input: JsonObject, actor: 
     syncStoredRequirementState(requirementId, now, true, requirement.version);
     requireActiveProject(requirement.projectId, true);
     assertRequirementOwnerOrManager(requireAuthorizationActor(actor), requirementId);
-    audit(actor, 'create', 'work_item', id, `新增工作项：${title}${collaboratorIds.length ? `（${collaboratorIds.length + (ownerId ? 1 : 0)}人协作）` : ''}`);
+    const description = `新增工作项：${title}${collaboratorIds.length ? `（${collaboratorIds.length + (ownerId ? 1 : 0)}人协作）` : ''}${reason ? `；${reason}` : ''}`;
+    if (reason) appendRequirementEvent(requirementId, 'correction', description, actor, id, 0, null, now);
+    audit(actor, 'create', 'work_item', id, description);
     assertProjectAssignees(requirementId, [ownerId, ...collaboratorIds], true);
   })();
   return getRequirement(requirementId, false, !deferAnalysis).workItems!.find((item) => item.id === id);
@@ -166,8 +169,12 @@ export function updateWorkItem(id: string, input: JsonObject, actor: Actor, defe
     requireActiveProject(requirement.projectId, true);
     if (historical) assertProjectManager(requireAuthorizationActor(actor), requirement.projectId);
     if(coordinationChanged&&!structuralChanged)assertCoordinationAccess('work',id,input,actor);else assertWorkItemRequirementOwnerOrManager(requireAuthorizationActor(actor), id);
-    if ((historical || requirementHasExecution) && structuralChanged) appendRequirementEvent(current.requirementId, 'correction', nullableText(input.reason) || describeChanges(current, input), actor, id, current.progress, null, now);
-    audit(actor, historical ? 'correct' : 'update', 'work_item', id, JSON.stringify(changeSnapshot({...current,collaboratorIds:previousCollaboratorIds},{title,ownerId,workStage:input.workStage===undefined?current.workStage:input.workStage,milestoneLabel:milestone,plannedStart,plannedEnd,referenceLinks,collaboratorIds:nextCollaboratorIds},nullableText(input.reason) || describeChanges(current,input))));
+    const before = {...current, collaboratorIds: [...previousCollaboratorIds].sort()};
+    const changes: JsonObject = {...input, collaboratorIds: [...nextCollaboratorIds].sort()};
+    delete changes.assigneeIds;
+    const reason = nullableText(input.reason) || describeChanges(before, changes);
+    if ((historical || requirementHasExecution) && structuralChanged) appendRequirementEvent(current.requirementId, 'correction', reason, actor, id, current.progress, null, now);
+    audit(actor, historical ? 'correct' : 'update', 'work_item', id, JSON.stringify(changeSnapshot({...current,collaboratorIds:previousCollaboratorIds},{title,ownerId,workStage:input.workStage===undefined?current.workStage:input.workStage,milestoneLabel:milestone,plannedStart,plannedEnd,referenceLinks,collaboratorIds:nextCollaboratorIds},reason)));
     validateAssignees();
   })();
   return getRequirement(current.requirementId, false, !deferAnalysis).workItems!.find((item) => item.id === id);

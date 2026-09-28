@@ -43,6 +43,8 @@ const IssuesPage = lazyPage(() => import("./pages/IssuesPage").then((module) => 
 const PeoplePage = lazyPage(() => import("./pages/PeoplePage").then((module) => ({ default: module.PeoplePage })));
 const TemplatesPage = lazyPage(() => import("./pages/TemplatesPage").then((module) => ({ default: module.TemplatesPage })));
 const ProjectSettingsPage = lazyPage(() => import("./pages/ProjectSettingsPage").then((module) => ({ default: module.ProjectSettingsPage })));
+const JiraScanPage = lazyPage(() => import('./pages/JiraScanPage').then(module => ({ default: module.JiraScanPage })));
+const JiraPrPage = lazyPage(() => import('./pages/JiraPrPage').then(module => ({ default: module.JiraPrPage })));
 const ProjectsPage = lazyPage(() => import("./pages/ProjectsPage").then((module) => ({ default: module.ProjectsPage })));
 const AccountsPage = lazyPage(() => import("./pages/AccountsPage").then((module) => ({ default: module.AccountsPage })));
 const ArchiveCenterPage = lazyPage(() => import("./pages/ArchiveCenterPage").then((module) => ({ default: module.ArchiveCenterPage })));
@@ -82,6 +84,9 @@ export const appRoutes: AppRoute[] = [
     path: "/issues", scope: "project", access: "all", component: IssuesPage,
     nav: [{ group: "项目协作", label: "问题跟踪", icon: CircleAlert }],
   },
+  { path: '/jira', scope: 'project', access: 'manager', component: JiraScanPage, nav: [{ group: '项目协作', label: 'Jira 进展管理', icon: ScanSearch, visible: ({ managesCurrentProject }) => managesCurrentProject }] },
+  { path: '/jira/prs', scope: 'project', access: 'manager', component: JiraPrPage, chrome: { title: 'Jira PR' } },
+  { path: '/jira/prs/:id', scope: 'project', access: 'manager', component: JiraPrPage, chrome: { title: 'Jira PR' } },
   {
     path: "/actions", scope: "project", access: "all", component: ActionCenterPage,
     nav: [{group: "项目协作", label: "项目待处理", icon: ListTodo}],

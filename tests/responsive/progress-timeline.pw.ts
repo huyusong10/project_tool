@@ -72,7 +72,7 @@ test('Phase 内独立需求的跨 Phase 依赖能实际绘制，空画布不算�
 });
 
 
-test('需求只显示最新达成节点，历史进入浮窗，所有执行行保持两层高度',{tag:'@responsive'},async({page},info)=>{
+test('需求条上不显示里程碑标记，摘要保留历史，所有执行行保持两层高度',{tag:'@responsive'},async({page},info)=>{
  const f=await phaseFixture(page),today=todayIso(),day=(n:number)=>addBusinessDays(today,n);
  const facts=[
   {id:'review-old',title:'需求基线',achievedAt:day(-3),targetDate:day(-4)},
@@ -84,11 +84,11 @@ test('需求只显示最新达成节点，历史进入浮窗，所有执行行�
  await page.goto('/?'+new URLSearchParams({projectId:f.projectId,workspaceView:'progress',scopeType:'project',scopeId:f.projectId}));
  await chooseOption(page.getByLabel('展开层级',{exact:true}),'work');await page.getByRole('button',{name:'适配全部',exact:true}).click();
  const row=page.locator('[data-row-id="'+f.testing.id+'"]'),marker=row.locator('.workspace-latest-milestone');
- await expect(marker).toHaveCount(1);await expect(marker).toHaveAttribute('data-milestone-id','review-new');await expect(marker).toHaveAttribute('data-milestone-date',day(-1));
+ await expect(marker).toHaveCount(0);
  await expect(page.locator('.workspace-date-annotation,.workspace-row-meta .gantt-milestone-undated,.workspace-row-track .gantt-milestone-label')).toHaveCount(0);
  await expect(row.locator('.workspace-row-track')).not.toContainText(/待排期|延期|并行/);
  const heights=await page.locator('.workspace-gantt-row:is(.kind-requirement,.kind-work)').evaluateAll(rows=>rows.map(r=>r.getBoundingClientRect().height));expect(new Set(heights).size).toBe(1);expect(heights[0]).toBe(56);
- await marker.click();const history=page.getByRole('dialog',{name:'里程碑详情'});await expect(history).toContainText('需求基线');await expect(history).toContainText('提测就绪');await expect(history).toContainText('后续交付');await page.keyboard.press('Escape');
+ await row.locator('.workspace-row-title').focus();const history=page.getByRole('tooltip');await history.locator('.workspace-summary-milestones summary').click();await expect(history).toContainText('需求基线');await expect(history).toContainText('提测就绪');await expect(history).toContainText('后续交付');await expect(history).toContainText('已取消');await page.keyboard.press('Escape');
  await page.screenshot({path:info.outputPath('latest-milestone.png'),animations:'disabled'});
  await page.setViewportSize({width:390,height:844});
  const narrow=await page.locator('.workspace-gantt-row:is(.kind-requirement,.kind-work)').evaluateAll(rows=>rows.map(r=>r.getBoundingClientRect().height));expect(new Set(narrow).size).toBe(1);expect(narrow[0]).toBe(56);

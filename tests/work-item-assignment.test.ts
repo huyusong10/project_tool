@@ -108,6 +108,39 @@ it('执行后修改协作者无需说明，REST与MCP保留记录并拒绝旧版
   ]));
 });
 
+it('REST与MCP新增工作项保留可选说明，记录归属正确且冲突不重复追加', async () => {
+  const owner = (await post('/api/people', { projectId, name: '新增说明负责人' })).json();
+  const requirement = (await post('/api/requirements', { projectId, title: '保留新增分工说明', ownerId: owner.id })).json();
+  const read = async () => (await app.inject({ url: '/api/requirements/' + requirement.id, headers: { cookie } })).json();
+  const { sqlite } = await import('./support/database');
+  for (const source of ['REST', 'MCP']) {
+    const before = await read();
+    const input = { title: source + '补充交接核对', ownerId: owner.id, reason: '  核对访问步骤并保留结论  ', expectedVersion: before.version };
+    const response = source === 'REST'
+      ? await post('/api/requirements/' + requirement.id + '/work-items', input)
+      : await callMcp('create_work_item', { requirementId: requirement.id, ...input });
+    if (source === 'REST') expect(response.statusCode, response.body).toBe(200);
+    else expect(response.isError).not.toBe(true);
+    const after = await read();
+    const work = after.workItems.find((item: { title: string }) => item.title === input.title);
+    expect(work).toMatchObject({ status: 'not_started', progress: 0, actualStart: null, actualEnd: null });
+    const description = `新增工作项：${input.title}；核对访问步骤并保留结论`;
+    expect(after.progressUpdates.filter((event: { workItemId: string }) => event.workItemId === work.id)).toEqual([
+      expect.objectContaining({ eventType: 'correction', content: description, workItemPercent: 0 }),
+    ]);
+    expect(sqlite.prepare('SELECT summary FROM audit_logs WHERE entity_id=? AND action=?').get(work.id, 'create')).toEqual({ summary: description });
+    const stale = await post('/api/requirements/' + requirement.id + '/work-items', input);
+    expect(stale.statusCode).toBe(409);
+    const deleted = await app.inject({ method: 'DELETE', url: '/api/work-items/' + work.id, headers: { cookie }, payload: { expectedVersion: work.version } });
+    expect(deleted.statusCode).toBe(409);
+    expect(await read()).toEqual(after);
+  }
+  const before = await read();
+  const blank = await post('/api/requirements/' + requirement.id + '/work-items', { title: '仍可只填名称', reason: '  ', expectedVersion: before.version });
+  expect(blank.statusCode, blank.body).toBe(200);
+  expect((await read()).progressUpdates).toEqual(before.progressUpdates);
+});
+
 it('大批量协作者校验分块执行并完整保存', async () => {
   const { sqlite } = await import('./support/database');
   const requirement = (await post('/api/requirements', {templateId: await defaultTemplate(projectId),  projectId, title: '大批量协作者', plannedStart: '2020-01-02' })).json();

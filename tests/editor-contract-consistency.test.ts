@@ -358,6 +358,29 @@ it('复制长标题且工期未确认的工作项可保存，仍保留未知工�
  expect(latest.workItems.find(w=>w.id===work.id)).toMatchObject({title,durationDays:null});
  expect(latest.workItems.find(w=>w.id===saved.json().addedIds[copied.mapping[work.id]])).toMatchObject({title:'工'.repeat(196)+' 副本',durationDays:null});
 });
+it('复制需求保留人工工作顺序，预览、保存和重新读取一致',async()=>{
+ const {projectId,requirement:r,ownerId}=await fixture('work_items');
+ for(const title of ['确认清单','实现联调','核对结果']){
+  const current=await get<Requirement>('/api/requirements/'+r.id);
+  const created=await request('POST','/api/requirements/'+r.id+'/work-items',{expectedVersion:current.version,title,ownerId});expect(created.statusCode,created.body).toBe(200);
+ }
+ // Make the manual order deliberately different from UUID order.
+ const original=(await get<Requirement>('/api/requirements/'+r.id)).workItems.sort((a,b)=>b.id.localeCompare(a.id));
+ for(const [sortOrder,work] of original.entries()){
+  const updated=await request('PATCH','/api/work-items/'+work.id,{expectedVersion:work.version,sortOrder});expect(updated.statusCode,updated.body).toBe(200);
+ }
+ const source=await get<Requirement>('/api/requirements/'+r.id),titles=source.workItems.map(w=>w.title);
+ const analysis=await get<PathAnalysis>('/api/projects/'+projectId+'/path-analysis');
+ const copy=copyEntities(analysis,{add:[],remove:[],estimates:[]},[r.id]),copyId=copy.mapping[r.id];
+ const {input,response}=await preview(projectId,copy.changes);expect(response.statusCode,response.body).toBe(200);
+ const projected=response.json<DependencyChangePreview>();
+ expect(projected.analysis.nodes.filter(n=>n.requirementId===copyId&&n.kind==='work').map(n=>n.title)).toEqual(titles);
+ const saved=await request('POST','/api/projects/'+projectId+'/dependency-changes/apply',{...input,batchId:randomUUID(),previewToken:projected.previewToken});expect(saved.statusCode,saved.body).toBe(200);
+ const id=saved.json().addedIds[copyId],result=await get<Requirement>('/api/requirements/'+id);
+ expect(result.workItems.map(w=>w.title)).toEqual(titles);
+ expect((await get<PathAnalysis>('/api/projects/'+projectId+'/path-analysis')).nodes.filter(n=>n.requirementId===id&&n.kind==='work').map(n=>n.title)).toEqual(titles);
+ expect((await get<Requirement>('/api/requirements/'+r.id)).workItems.map(w=>({id:w.id,title:w.title,version:w.version,sortOrder:w.sortOrder}))).toEqual(source.workItems.map(w=>({id:w.id,title:w.title,version:w.version,sortOrder:w.sortOrder})));
+});
 it('本地草稿修改直接执行需求时，不改写正式分析基线，放弃后可恢复原节点',async()=>{
  const {projectId,requirement:r}=await fixture('direct');
  const analysis=await get<PathAnalysis>('/api/projects/'+projectId+'/path-analysis'),baseline=structuredClone(analysis);
@@ -390,12 +413,15 @@ for(const operation of ['change-owner','replace-assignees','clear-assignees','cr
  const work=(await request('POST','/api/requirements/'+r.id+'/work-items',{expectedVersion:r.version,title:'参与人验证',ownerId,assigneeIds:[person.id]})).json();
  const id=operation==='create'?randomUUID():work.id;
  const data=operation==='change-owner'?{ownerId:person.id}:operation==='clear-assignees'?{assigneeIds:[]}:operation==='replace-assignees'?{assigneeIds:[person.id,ownerId,person.id]}:{title:'新增参与人',ownerId,assigneeIds:[person.id]};
+ const baseline=await get<PathAnalysis>('/api/projects/'+projectId+'/path-analysis');
  const {input,response}=await preview(projectId,{entities:[{entity:'work',op:operation==='create'?'create':'update',id,requirementId:r.id,expectedVersion:operation==='create'?undefined:work.version,data}]});
  expect(response.statusCode,response.body).toBe(200);const p=response.json<DependencyChangePreview>();
  const saved=await request('POST','/api/projects/'+projectId+'/dependency-changes/apply',{...input,batchId:randomUUID(),previewToken:p.previewToken});expect(saved.statusCode,saved.body).toBe(200);
  const formal=await get<PathAnalysis>('/api/projects/'+projectId+'/path-analysis'),realId=saved.json().addedIds[id]||id;
  const assigned=(n:{assigneeIds?:string[];assigneeNames?:string[]})=>n.assigneeIds?.map((id,i)=>[id,n.assigneeNames?.[i]]).sort((a,b)=>String(a[0]).localeCompare(String(b[0])));
  const pn=p.analysis.nodes.find(n=>n.id===id)!,fn=formal.nodes.find(n=>n.id===realId)!;
+ const local=draftNetwork(baseline,input.changes).nodes.find(n=>n.id===id)!;
+ expect([...local.assigneeIds||[]].sort()).toEqual([...pn.assigneeIds||[]].sort());
  expect.soft(pn.ownerName).toBe(fn.ownerName);expect.soft(assigned(pn)).toEqual(assigned(fn));
  expect(assigned(p.analysis.requirements.find(n=>n.id===r.id)!)).toEqual(assigned(formal.requirements.find(n=>n.id===r.id)!));
 });

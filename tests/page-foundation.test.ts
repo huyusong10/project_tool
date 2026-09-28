@@ -44,4 +44,10 @@ describe('页面上下文与声明', () => {
     await Promise.resolve(); store.prepareNavigation(); expect(cancel).toHaveBeenCalledTimes(2);
     store.release('b',b); store.release('b',b); expect(store.getSnapshot()).toBeNull();
   });
+  it('Jira 视图切换保留页面状态，切换项目重新加载', () => {
+    const key = (search:string) => pageIdentity('/jira',new URLSearchParams(search));
+    expect(key('projectId=a')).toBe(key('projectId=a&view=discovery'));
+    expect(key('projectId=a&page=2')).toBe(key('projectId=a&view=discovery&page=3'));
+    expect(key('projectId=a')).not.toBe(key('projectId=b'));
+  });
 });

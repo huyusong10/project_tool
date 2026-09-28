@@ -1,0 +1,30 @@
+import { expect, test } from '@playwright/test';
+import type { Requirement } from '../../src/client/types';
+import { phaseFixture } from './phase-fixture';
+
+for (const mode of ['direct', 'testing'] as const) test(`${mode} 执行中修改完成标准后在需求记录核对前后内容`, async ({ page }) => {
+  const fixture = await phaseFixture(page), target = fixture[mode];
+  const read = async () => await (await page.request.get('/api/requirements/' + target.id)).json() as Requirement;
+  const before = await read();
+  await page.goto('/requirements/' + target.id);
+  await page.getByRole('button', { name: '编辑信息', exact: true }).click();
+  await page.getByRole('textbox', { name: '需求背景（可选）', exact: true }).fill('核对目标版本及使用限制');
+  await page.getByRole('textbox', { name: '完成标准（可选）', exact: true }).fill('每个适用场景记录验证结论，例外场景单独列出。');
+  await page.getByRole('button', { name: '保存信息', exact: true }).click();
+  await expect(page.getByRole('textbox', { name: '完成标准（可选）', exact: true })).toHaveCount(0);
+  const after = await read(), entry = after.progressUpdates![0];
+  expect(after.progressUpdates).toHaveLength(before.progressUpdates!.length + 1);
+  expect(entry).toMatchObject({ eventType: 'note', createdByName: 'admin', percent: before.progress });
+  expect(entry.content).toContain('完成标准：未设置 → 每个适用场景记录验证结论，例外场景单独列出。');
+  expect(after).toMatchObject({ status: before.status, progress: before.progress, plannedStart: before.plannedStart, plannedEnd: before.plannedEnd, actualStart: before.actualStart });
+  await page.getByRole('tab', { name: '记录', exact: true }).click();
+  await expect(page.getByText(entry.content, { exact: true })).toBeVisible();
+  await page.reload();
+  await expect(page.getByText(entry.content, { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: '编辑信息', exact: true }).click();
+  await page.getByRole('textbox', { name: '完成标准（可选）', exact: true }).fill('取消的修改');
+  await page.getByRole('button', { name: '取消', exact: true }).click();
+  expect((await read()).progressUpdates).toEqual(after.progressUpdates);
+  await page.getByRole('tab', { name: '概况', exact: true }).click();
+  await expect(page.getByRole('region', { name: '需求说明', exact: true }).getByText(after.acceptanceCriteria!, { exact: true })).toBeVisible();
+});

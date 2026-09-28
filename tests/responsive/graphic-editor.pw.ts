@@ -287,7 +287,7 @@ test('重复连线可定位已有草稿关系，快速撤销重做后线路完�
  });await openGraph(page,'/paths?pathScope=all');await ready(page);const revision=(await analysis()).revision,before=await viewportValue(page);await graphToolbar(page,'编辑画布');
  const source=page.locator('.react-flow__node[data-id="'+a.id+'"]'),target=page.locator('.react-flow__node[data-id="'+b.id+'"]');
  const connect=async()=>{await source.locator('.business-handle[data-side="bottom"]').click();await target.locator('.dependency-card').click({position:{x:80,y:45}});};
- await connect();await ready(page);await connect();await expect(page.getByRole('button',{name:'查看已有关系',exact:true})).toBeVisible();await page.getByRole('button',{name:'查看已有关系',exact:true}).click();await expect(page.locator('.graph-relation-list')).toContainText('验收后开始');
+ await connect();await ready(page);await connect();await expect(page.getByRole('button',{name:'查看已有关系',exact:true})).toBeVisible();await page.getByRole('button',{name:'查看已有关系',exact:true}).click();await expect(page.locator('.graph-relation-list')).toContainText('需求完成后开始');
  await page.locator('.graph-auxiliary').getByRole('button',{name:'关闭',exact:true}).click();for(let i=0;i<3;i++){await graphToolbar(page,'撤销');await graphToolbar(page,'重做');}await ready(page);
  expect(await viewportValue(page)).toBe(before);await expect.poll(()=>page.locator('.graph-routed-edge').evaluateAll(es=>es.map(e=>Number(e.getAttribute('opacity'))))).toEqual([1]);await expect(page.locator('.react-flow__edge-path')).toHaveCount(1);expect((await analysis()).revision).toBe(revision);
 });
@@ -581,7 +581,7 @@ test('全局交付条件：直接拉线、细化、撤销、返回和保存只�
  await page.locator('.react-flow__node[data-id="'+a.id+'"] .business-handle[data-side="right"]').click();
  await page.locator('.react-flow__node[data-id="'+b.id+'"] .dependency-card').click({position:{x:80,y:45}});await ready(page);
  const edge=page.locator('.react-flow__edge[data-id="'+a.id+'>'+b.id+'"]');
- await expect(edge.locator('.dependency-edge-label')).toHaveText('验收后开始');await edge.locator('.dependency-edge-label').click();
+ await expect(edge.locator('.dependency-edge-label')).toHaveText('需求完成后开始');await edge.locator('.dependency-edge-label').click();
  await expect(selectedValue(page.getByLabel('等待什么完成',{exact:true}))).toHaveValue('acceptance:'+a.id);
  await expect(page.locator('.delivery-target')).not.toHaveAttribute('open','');
  await chooseOption(page.getByLabel('等待什么完成',{exact:true}), a.workItems[0].id);await ready(page);
@@ -598,6 +598,24 @@ test('全局交付条件：直接拉线、细化、撤销、返回和保存只�
  const result=await analysis(),cross=result.dependencies.filter(d=>d.sourceRequirementId===a.id&&d.targetRequirementId===b.id);
  expect(cross).toHaveLength(1);expect(cross[0]).toMatchObject({sourceWorkItemId:a.workItems[0].id,targetWorkItemId:b.workItems[1].id});expect(await positionsValue(page)).toEqual(positions);
  await edge.locator('.dependency-edge-label').click();await expect(page.locator('.delivery-condition')).toBeVisible();await page.screenshot({path:info.outputPath('delivery-condition-saved.png')});
+ const savedDetails=await Promise.all([a,b].map(async r=>(await page.request.get('/api/requirements/'+r.id)).json()));
+ await graphToolbar(page,'编辑画布');await edge.locator('.dependency-edge-label').click();
+ await page.getByRole('button',{name:'移除选中关系',exact:true}).click();
+ await expect(page.getByRole('dialog')).toHaveCount(0);await expect(edge).toHaveCount(0);
+ expect(new URL(page.url()).searchParams.has('pathEdge')).toBe(false);expect(new URL(page.url()).searchParams.has('pathRelation')).toBe(false);
+ expect((await analysis()).dependencies).toEqual(result.dependencies);
+ await page.reload();await ready(page);await expect(page.getByRole('dialog')).toHaveCount(0);await expect(edge).toHaveCount(0);
+ await graphToolbar(page,'撤销');await ready(page);await expect(edge).toHaveCount(1);
+ await edge.locator('.dependency-edge-label').click();await closeGraphProperties(page);await focusGraph(page);await page.keyboard.press('Delete');
+ await expect(edge).toHaveCount(0);expect(new URL(page.url()).searchParams.has('pathEdge')).toBe(false);
+ await graphToolbar(page,'保存修改');await expect(page.getByLabel('编辑画布',{exact:true})).toBeVisible();
+ expect((await analysis()).dependencies).toEqual(result.dependencies.filter(d=>d.id!==cross[0].id));
+ await page.reload();await ready(page);await expect(edge).toHaveCount(0);await expect(page.getByRole('dialog')).toHaveCount(0);
+ const facts=(r:Requirement)=>({id:r.id,title:r.title,status:r.status,progress:r.progress,version:r.version,plannedStart:r.plannedStart,plannedEnd:r.plannedEnd,actualStart:r.actualStart,actualEnd:r.actualEnd,progressUpdates:r.progressUpdates,workItems:r.workItems.map(w=>({id:w.id,title:w.title,ownerId:w.ownerId,status:w.status,progress:w.progress,plannedStart:w.plannedStart,plannedEnd:w.plannedEnd,actualStart:w.actualStart,actualEnd:w.actualEnd,version:w.version}))});
+ const afterDetails:Requirement[]=await Promise.all([a,b].map(async r=>(await page.request.get('/api/requirements/'+r.id)).json()));
+ expect(afterDetails.map(facts)).toEqual(savedDetails.map(facts));
+ expect(afterDetails[1].workItems.find(w=>w.id===b.workItems[1].id)?.unmetPredecessors).not.toEqual(expect.arrayContaining([expect.objectContaining({id:a.workItems[0].id})]));
+
 });
 
 test('全局交付条件：聚合明细不误改整组，重复拒绝，刷新保留草稿',async({page})=>{
@@ -618,6 +636,13 @@ test('全局交付条件：聚合明细不误改整组，重复拒绝，刷新�
  await graphToolbar(page,'保存修改');await expect(page.getByLabel('编辑画布',{exact:true})).toBeVisible();
  const cross=(await analysis()).dependencies.filter(d=>d.sourceRequirementId===a.id&&d.targetRequirementId===b.id);expect(cross).toHaveLength(2);
  expect(cross.find(d=>d.targetWorkItemId===b.workItems[0].id)?.sourceWorkItemId).toBe(a.workItems[0].id);expect(cross.find(d=>d.targetWorkItemId===b.workItems[1].id)?.sourceWorkItemId).toBe(a.workItems[1].id);
+ await graphToolbar(page,'编辑画布');await edge.locator('.dependency-edge-label').click();
+ await page.locator('.modal-card-workspace .graph-relation-list>div>button:first-child').filter({hasText:'订单交付 · 方案交付'}).click();
+ await page.getByRole('button',{name:'移除选中关系',exact:true}).click();await expect(page.getByRole('dialog')).toHaveCount(0);
+ await expect(edge.locator('.dependency-edge-label')).toHaveText('集成验证 → 集成验证');
+ await graphToolbar(page,'保存修改');await expect(page.getByLabel('编辑画布',{exact:true})).toBeVisible();
+ expect((await analysis()).dependencies.filter(d=>d.sourceRequirementId===a.id&&d.targetRequirementId===b.id)).toEqual(cross.filter(d=>d.targetWorkItemId===b.workItems[1].id));
+
 });
 
 test('全局交付条件：按拼音查找需求里程碑，选择后保持草稿不写正式关系',async({page})=>{
@@ -638,6 +663,16 @@ test('关系图余量抽屉、顶栏和交付条件在矩阵与窄屏内显示',
   await page.setViewportSize({width,height:844});await closeGraphProperties(page);
   expect((await page.locator('.topbar').boundingBox())!.height).toBeLessThanOrEqual(88);
   await page.getByRole('button',{name:'余量',exact:true}).click();await expect(page.locator('.path-float-distribution')).toBeVisible();
+  const floatPanel=page.locator('.graph-auxiliary');
+  await floatPanel.getByRole('button',{name:'0 工作日 2',exact:true}).click();
+  await expect(floatPanel).toContainText('当前范围 2 个节点；所选区间 2 个。');
+  await expect(floatPanel.locator('.path-float-results .graph-list-row')).toHaveCount(2);
+  await expect(floatPanel.locator('.path-float-results')).toContainText('计划 '+a.plannedEnd+' · 预计 ');
+  await floatPanel.getByRole('button',{name:'1—2 工作日 0',exact:true}).click();
+  await expect(floatPanel).toContainText('当前范围 2 个节点；所选区间 0 个。');
+  await expect(floatPanel).toContainText('此区间没有匹配节点。');
+  await floatPanel.getByRole('button',{name:'1—2 工作日 0',exact:true}).click();
+  await expect(floatPanel).toContainText('选择余量区间查看对应节点。');
   const drawer=(await page.locator('.graph-auxiliary').boundingBox())!,footer=(await page.locator('.graph-footer').boundingBox())!,controls=(await page.locator('.graph-view-controls').boundingBox())!;
   expect(drawer.y+drawer.height).toBeLessThanOrEqual(Math.min(footer.y,controls.y)-10);
   await page.keyboard.press('Escape');

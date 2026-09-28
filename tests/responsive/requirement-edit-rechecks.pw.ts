@@ -582,7 +582,7 @@ for (const nextStatus of ["completed", "in_progress"] as const) {
     });
     const openDates = async () => {
       await page.getByRole("tab", { name: /^工作项 / }).click();
-      await page.locator('.work-arrangement-row').first().getByRole("button", { name: "修正实际日期", exact: true }).click();
+      await page.locator('.work-arrangement-row').first().getByRole("button", { name: "修正日期与说明", exact: true }).click();
     };
     try {
       await page.goto("/requirements/r1");
@@ -605,7 +605,7 @@ for (const nextStatus of ["completed", "in_progress"] as const) {
       await page.getByRole("button", { name: "保存纠错" }).click();
       await expect.poll(() => patches.length).toBe(2);
       expect(patches[1].body).toMatchObject({ expectedVersion: 2, actualStart: "2026-08-30", actualEnd: nextStatus === "completed" ? "2026-09-02" : null, reason: "保留这次核对结果" });
-      await expect(page.getByRole("dialog", { name: "修正实际日期", exact: true })).toHaveCount(0);
+      await expect(page.getByRole("dialog", { name: "修正日期与说明", exact: true })).toHaveCount(0);
       await openDates();
       await expect(start).toHaveValue("2026-08-30");
       if (nextStatus === "completed") await expect(end).toHaveValue("2026-09-02");
@@ -613,7 +613,7 @@ for (const nextStatus of ["completed", "in_progress"] as const) {
       await expect(reason).toHaveValue("");
       await start.fill("2026-08-29");
       await reason.fill("取消的草稿");
-      await page.getByRole("dialog", { name: "修正实际日期", exact: true }).getByRole("button", { name: "取消", exact: true }).click();
+      await page.getByRole("dialog", { name: "修正日期与说明", exact: true }).getByRole("button", { name: "取消", exact: true }).click();
       await openDates();
       await expect(start).toHaveValue("2026-08-30");
       await expect(reason).toHaveValue("");
@@ -636,7 +636,7 @@ test("实际日期纠错拦截未来和倒置日期，合法提交期间锁定�
   try {
     await page.goto("/requirements/r1");
     await page.getByRole("tab", { name: /^工作项 / }).click();
-    await page.locator('.work-arrangement-row').first().getByRole("button", { name: "修正实际日期", exact: true }).click();
+    await page.locator('.work-arrangement-row').first().getByRole("button", { name: "修正日期与说明", exact: true }).click();
     const start = page.getByLabel("实际开始", { exact: true });
     const end = page.getByLabel("实际完成", { exact: true });
     const reason = page.getByLabel("纠错原因");
@@ -663,7 +663,7 @@ test("实际日期纠错拦截未来和倒置日期，合法提交期间锁定�
     await expect(end).toBeDisabled();
     await expect(reason).toHaveAttribute("readonly", "");
     releaseSave();
-    await expect(page.getByRole("dialog", { name: "修正实际日期", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("dialog", { name: "修正日期与说明", exact: true })).toHaveCount(0);
   } finally { releaseSave(); }
 });
 
@@ -1103,8 +1103,8 @@ test("工作项菜单可切换到实际日期修正和历史补录，需求可�
   });
   await page.goto("/requirements/r1");
   await showWorkList(page);
-  await page.getByRole('button', {name:'修正实际日期',exact:true}).first().click();
-  await expect(page.getByRole('dialog',{name:/^(修正实际日期|按期完成（历史补录）|完成工作项)$/})).toHaveCount(1);
+  await page.getByRole('button', {name:'修正日期与说明',exact:true}).first().click();
+  await expect(page.getByRole('dialog',{name:/^(修正日期与说明|按期完成（历史补录）|完成工作项)$/})).toHaveCount(1);
   await expect(page.getByLabel("实际开始", { exact: true })).toBeVisible();
   await expect(page.getByLabel("实际完成", { exact: true })).toHaveCount(0);
   await page.getByLabel("实际开始", { exact: true }).fill("2026-08-31");
@@ -1115,8 +1115,8 @@ test("工作项菜单可切换到实际日期修正和历史补录，需求可�
   await page.getByRole("button", { name: "保存纠错" }).click();
   await expect.poll(() => patches.length).toBe(1);
   expect(patches[0].body).toMatchObject({ actualStart: "2026-08-31", actualEnd: null, reason: "修正历史开始日期", supersedesId: "pu-source", expectedVersion: 1 });
-  await expect(page.getByRole('dialog',{name:/^(修正实际日期|按期完成（历史补录）|完成工作项)$/})).toHaveCount(0);
-  await expect(page.getByLabel("操作反馈").getByText("实际日期已修正", { exact: true })).toBeVisible();
+  await expect(page.getByRole('dialog',{name:/^(修正日期与说明|按期完成（历史补录）|完成工作项)$/})).toHaveCount(0);
+  await expect(page.getByLabel("操作反馈").getByText("纠错已保存", { exact: true })).toBeVisible();
   await showWorkList(page);
   await expect(page.getByRole("button", { name: "标记阻塞" })).toHaveCount(0);
   await page.locator('.work-arrangement-row').nth(1).getByRole('button',{name:'按期完成（历史补录）',exact:true}).click();
@@ -1327,9 +1327,9 @@ test("已取消需求保留工作项修正，但不开放重开和推进", async
 
   await page.goto("/requirements/r1");
   await showWorkList(page);
-  await expect(page.getByRole("button", { name: "修正实际日期", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "修正日期与说明", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "重开/返工", exact: true })).toHaveCount(0);
-  await page.getByRole('button', {name:'修正实际日期',exact:true}).first().click();
+  await page.getByRole('button', {name:'修正日期与说明',exact:true}).first().click();
   await page.getByLabel("实际开始", { exact: true }).fill("2026-08-31");
   await page.getByLabel("纠错原因", { exact: true }).fill("修正取消前的历史日期");
   await page.getByRole("button", { name: "保存纠错", exact: true }).click();
@@ -1376,7 +1376,7 @@ test("修正实际日期使用打开弹层时的工作项版本，后台刷新�
 
   await page.goto("/requirements/r1");
   await showWorkList(page);
-  await page.getByRole('button', {name:'修正实际日期',exact:true}).first().click();
+  await page.getByRole('button', {name:'修正日期与说明',exact:true}).first().click();
   const actualStart = page.getByLabel("实际开始", { exact: true });
   const reason = page.getByRole("textbox", { name: "纠错原因", exact: true });
   await actualStart.fill("2026-08-31");
@@ -1418,7 +1418,7 @@ test("工作项历史补录固定确认版本，计划变化后核对新日期�
   const previousReads = reads;
   await page.evaluate(() => { window.dispatchEvent(new Event("offline")); window.dispatchEvent(new Event("online")); });
   await expect.poll(() => reads).toBeGreaterThan(previousReads);
-  const popover = page.getByRole('dialog',{name:/^(修正实际日期|按期完成（历史补录）|完成工作项)$/});
+  const popover = page.getByRole('dialog',{name:/^(修正日期与说明|按期完成（历史补录）|完成工作项)$/});
   await popover.getByRole("button", { name: "确认补录完成", exact: true }).click();
   await expect(popover.getByText(/已读取最新工作项（版本 2）/)).toBeVisible();
   await expect(popover).toContainText("2020-01-06");
@@ -1468,7 +1468,7 @@ test("工作项历史补录成功但响应异常时读取状态并避免重复�
   await page.getByRole('button', {name:'按期完成（历史补录）',exact:true}).first().click();
   await page.getByRole("button", { name: "确认补录完成", exact: true }).click();
 
-  await expect(page.getByRole('dialog',{name:/^(修正实际日期|按期完成（历史补录）|完成工作项)$/})).toContainText("提交结果仍待核对");
+  await expect(page.getByRole('dialog',{name:/^(修正日期与说明|按期完成（历史补录）|完成工作项)$/})).toContainText("提交结果仍待核对");
   await expect(page.getByRole("button",{name:"确认补录完成",exact:true})).toBeDisabled();
   await expect(page.locator('.work-arrangement-state').first()).toContainText('已完成');
   expect(submissions).toBe(1);
@@ -1502,7 +1502,7 @@ test('工作项历史补录响应异常时不把其他账号的相同补录误�
   await page.goto('/requirements/r1');
   await showWorkList(page);
   await page.getByRole('button', {name:'按期完成（历史补录）',exact:true}).first().click();
-  const popover = page.getByRole('dialog',{name:/^(修正实际日期|按期完成（历史补录）|完成工作项)$/});
+  const popover = page.getByRole('dialog',{name:/^(修正日期与说明|按期完成（历史补录）|完成工作项)$/});
   await popover.getByRole('button', { name: '确认补录完成', exact: true }).click();
 
   await expect(popover).toBeVisible();
@@ -1535,15 +1535,15 @@ for (const [eventAccountId, reconciled] of [['admin', true], ['other-account', f
 
     await page.goto('/requirements/r1');
     await showWorkList(page);
-    await page.getByRole('button', {name:'修正实际日期',exact:true}).first().click();
-    const popover = page.getByRole('dialog',{name:/^(修正实际日期|按期完成（历史补录）|完成工作项)$/});
+    await page.getByRole('button', {name:'修正日期与说明',exact:true}).first().click();
+    const popover = page.getByRole('dialog',{name:/^(修正日期与说明|按期完成（历史补录）|完成工作项)$/});
     await popover.getByLabel('实际开始', { exact: true }).fill('2026-08-31');
     await popover.getByLabel('纠错原因', { exact: true }).fill('核对实际开始日期');
     await popover.getByRole('button', { name: '保存纠错', exact: true }).click();
 
     await expect(popover).toContainText('提交结果仍待核对');
     await expect(popover.getByRole('button',{name:'保存纠错',exact:true})).toBeDisabled();
-    await expect(page.getByText('已核对最新状态：实际日期已修正', { exact: true })).toHaveCount(0);
+    await expect(page.getByText('已核对最新状态：纠错已保存', { exact: true })).toHaveCount(0);
   });
 }
 
@@ -1568,7 +1568,7 @@ test('工作项历史补录响应异常时不把其他完成日期误认成补�
   await page.goto('/requirements/r1');
   await showWorkList(page);
   await page.getByRole('button', {name:'按期完成（历史补录）',exact:true}).first().click();
-  const popover = page.getByRole('dialog',{name:/^(修正实际日期|按期完成（历史补录）|完成工作项)$/});
+  const popover = page.getByRole('dialog',{name:/^(修正日期与说明|按期完成（历史补录）|完成工作项)$/});
   await popover.getByRole('button', { name: '确认补录完成', exact: true }).click();
 
   await expect(popover).toBeVisible();
@@ -1620,7 +1620,7 @@ for (const recordMatchingEvent of [true, false]) {
 
     await page.goto('/requirements/r1');
     await showWorkList(page);await page.getByRole('button',{name:'完成',exact:true}).first().click();
-    const popover = page.getByRole('dialog',{name:/^(修正实际日期|按期完成（历史补录）|完成工作项)$/});
+    const popover = page.getByRole('dialog',{name:/^(修正日期与说明|按期完成（历史补录）|完成工作项)$/});
     await popover.getByRole('textbox', { name: '完成说明（可选）', exact: true }).fill('完成历史交付');
     await popover.getByRole('button', { name: '确认完成', exact: true }).click();
 
@@ -1660,7 +1660,7 @@ test('工作项完成响应异常时不把其他账号的相同命令误认成�
 
   await page.goto('/requirements/r1');
   await showWorkList(page);await page.getByRole('button',{name:'完成',exact:true}).first().click();
-  const popover = page.getByRole('dialog',{name:/^(修正实际日期|按期完成（历史补录）|完成工作项)$/});
+  const popover = page.getByRole('dialog',{name:/^(修正日期与说明|按期完成（历史补录）|完成工作项)$/});
   await popover.getByRole('textbox', { name: '完成说明（可选）', exact: true }).fill('完成历史交付');
   await popover.getByRole('button', { name: '确认完成', exact: true }).click();
 

@@ -1081,11 +1081,24 @@ test('100%保存期间锁定页签和关闭，失败保留说明', async ({page}
   } finally {release();}
 });
 
-test('负责人更新进度仍保留99%上限', async ({page}) => {
-  await fixture(page, 'owner');
+for (const role of ['owner', 'manager'] as const) test(`问题进度的滑杆与数值保持整数一致并遵守角色上限：${role}`, async ({page}) => {
+  const state = await fixture(page, role);
   await page.goto('/issues?issueId=i1');
   const form = page.locator('.issue-update-form');
-  await expect(form.getByRole('spinbutton')).toHaveAttribute('max', '99');
-  await expect(form.getByRole('button', {name: '100%', exact: true})).toHaveCount(0);
+  const number = form.getByRole('spinbutton'), slider = form.getByRole('slider');
+  const max = role === 'owner' ? 99 : 100;
+  await expect(number).toHaveAttribute('max', String(max));
+  await expect(form.getByRole('button', {name: '100%', exact: true})).toHaveCount(role === 'owner' ? 0 : 1);
   for (const value of [20, 50, 80]) await expect(form.getByRole('button', {name: value + '%', exact: true})).toBeVisible();
+  await number.fill('67');
+  await expect(slider).toHaveValue('67');
+  await number.fill('99');
+  await expect(slider).toHaveValue('99');
+  await slider.press('End');
+  await expect(number).toHaveValue(String(max));
+  await slider.press('ArrowLeft');
+  await expect(number).toHaveValue(String(max - 1));
+  await form.getByRole('button', {name: '追加进展', exact: true}).click();
+  await expect.poll(() => state.writes).toEqual([{path: '/api/issues/i1/updates', body: {progress: max - 1, content: '', expectedVersion: 1}}]);
+  await expect(page.locator('.issue-settings-current-progress strong')).toHaveText(`${max - 1}%`);
 });

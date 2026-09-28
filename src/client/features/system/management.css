@@ -68,6 +68,7 @@
 .system-detail-list > div:not(.http-alert) { min-height: 45px; display: grid; grid-template-columns: 92px minmax(0,1fr); align-items: center; gap: 10px; border-bottom: 1px solid var(--divider); }
 .system-detail-list > div > span { color: var(--text-faint); font-size: 12px; }
 .system-detail-list > div > strong { overflow: hidden; color: var(--text-secondary); font-size: 13px; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
+.system-detail-list > div > .system-log-path { white-space: normal; overflow-wrap: anywhere; padding: 8px 0; }
 .system-detail-list .http-alert { grid-column: 1 / -1; margin-top: 13px; font-size: 12px; }
 .system-check-content { display: grid; gap: 16px; padding: 18px; }
 .system-check-state { min-height: 92px; display: flex; align-items: center; gap: 14px; padding: 16px; border: 1px solid var(--border-default); border-radius: var(--radius-lg); background: var(--bg-surface-subtle); }

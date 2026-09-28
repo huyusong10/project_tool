@@ -18,6 +18,10 @@ import { readResourceFresh, ResourceReadInvalidatedError } from "../../../use-re
 import type { Requirement, WorkItemTemplate } from "../../../types";
 import { ConfirmDialog, Modal } from "../../../components/Modal";
 import { FormError, FormField, FormSubmitActions } from "../../../components/Form";
+import { DirectRequirementSchedulePreview, RequirementSchedulePreview } from '../RequirementSchedulePreview';
+import { RequirementPlanPreview } from '../RequirementPlanPreview';
+import { useAppNavigate } from '../../../use-app-navigation';
+import { workspaceParams } from '../../../workspace-location';
 
 export type ScheduleChange = {
   endpoint: "reschedule" | "reselect-template";
@@ -93,6 +97,7 @@ export function RequirementScheduleForm({
 }) {
   const [unknown,setUnknown]=useState(Boolean(recheck));
   const client = useQueryClient();
+  const navigate = useAppNavigate();
   const submitting = useRef(false);
   const readingRef = useRef(false);
   const mounted = useRef(true);
@@ -146,6 +151,8 @@ export function RequirementScheduleForm({
   const templateChanged = Boolean(templateId && templateId !== baseRequirement.templateId);
   const selectedTemplateUnavailable = Boolean(templateChanged && templatesQuery.data && !templates.some((template) => template.id === templateId));
   const current = requirement.version > baseRequirement.version ? requirement : baseRequirement;
+  const templateResetBlocked = templateChanged && (current.workItems.some(item => item.status !== 'not_started' || item.progress > 0 || item.actualStart)
+    || current.progressUpdates?.some(update => !['note', 'correction'].includes(update.eventType)));
   const locked = ["pending_acceptance", "completed", "cancelled"].includes(current.status);
   const read = async () => {
     if (readingRef.current) return null;
@@ -230,6 +237,8 @@ export function RequirementScheduleForm({
     onSettled: () => { submitting.current = false; },
   });
   const pending = mutation.isPending || reading;
+  const missingScheduleAnchor = !templateChanged && baseRequirement.workItems.length > 0
+    && !(scheduleMode === 'start' ? baseRequirement.plannedStart : baseRequirement.plannedEnd);
   const submit = (change: ScheduleChange) => {
     if (submitting.current || unknown || changed || needsRefresh || locked || selectedTemplateUnavailable) return;
     submitting.current = true;
@@ -257,7 +266,7 @@ export function RequirementScheduleForm({
     <form
       onSubmit={(event) => {
         event.preventDefault();
-        if (submitting.current || unknown || pendingSubmit || changed || needsRefresh || locked || selectedTemplateUnavailable) return;
+        if (submitting.current || unknown || pendingSubmit || changed || needsRefresh || locked || selectedTemplateUnavailable || templateResetBlocked || missingScheduleAnchor) return;
         const change: ScheduleChange = {
           endpoint: templateChanged ? "reselect-template" : "reschedule",
           templateName: templates.find((template) => template.id === templateId)?.name || baseRequirement.templateName || "未绑定",
@@ -275,15 +284,22 @@ export function RequirementScheduleForm({
     >
       <fieldset className="form-grid form-fieldset" disabled={pending || Boolean(pendingSubmit)}>
       <p className="field-help field-full">当前流程：{baseRequirement.templateName || "未绑定"}<br />当前计划：{baseRequirement.plannedStart || "未填写"} → {baseRequirement.plannedEnd || "未填写"}</p>
+      {missingScheduleAnchor && !changed && !needsRefresh && !unknown && !locked && <div className="warning-banner field-full">
+        缺少原计划{scheduleMode === 'start' ? '开始' : '完成'}日期，暂时不能整体平移。可按依赖生成未开始工作的计划，也可在工作项中逐项填写。
+        <Button variant="secondary" type="button" className="ghost-button" onClick={() => {
+          onClose();
+          navigate('/?' + workspaceParams({projectId:requirement.projectId,view:'graph',scope:{kind:'requirement',id:requirement.id}},undefined,new URLSearchParams({pathPanel:'schedule',pathInspector:'closed',graphInspector:'closed'})));
+        }}>按依赖预览排期</Button>
+      </div>}
       <FormField label="排期方式" full asLabel={false}>
         <div className="schedule-mode-switch" role="radiogroup" aria-label="排期方式">
           <button type="button" className={scheduleMode === "start" ? "is-active" : ""} role="radio" aria-checked={scheduleMode === "start"} onClick={() => switchMode("start")}>
             <strong>按开始日期正排</strong>
-            <small>{baseRequirement.executionMode==='direct'?"按预计工期计算需求计划，保留实际日期":baseRequirement.workItems.length ? "整体平移现有工作项，以选定日期开始" : "按当前流程生成工作项和计划"}</small>
+            <small>{templateChanged ? "按新流程生成工作项，以选定日期开始" : baseRequirement.executionMode==='direct'?"工期已知时计算完成日期，否则保留原完成日期":baseRequirement.workItems.length ? "整体平移现有工作项，以选定日期开始" : "按当前流程生成工作项和计划"}</small>
           </button>
           <button type="button" className={scheduleMode === "deadline" ? "is-active" : ""} role="radio" aria-checked={scheduleMode === "deadline"} onClick={() => switchMode("deadline")}>
             <strong>按截止日期倒排</strong>
-            <small>{baseRequirement.executionMode==='direct'?"以选定日期完成，按预计工期反推开始":baseRequirement.workItems.length ? "整体平移现有工作项，以选定日期结束" : "按当前流程倒排生成工作项和计划"}</small>
+            <small>{templateChanged ? "按新流程生成工作项，以选定日期结束" : baseRequirement.executionMode==='direct'?"工期已知时计算开始日期，否则保留原开始日期":baseRequirement.workItems.length ? "整体平移现有工作项，以选定日期结束" : "按当前流程倒排生成工作项和计划"}</small>
           </button>
         </div>
       </FormField>
@@ -317,14 +333,18 @@ export function RequirementScheduleForm({
         </Select>
       </FormField>
       }{templatesQuery.error && <div className="warning-banner field-full">流程列表加载失败，当前只能调整日期，不能切换流程。<Button variant="secondary" type="button" className="ghost-button" disabled={templatesQuery.isFetching} onClick={() => void templatesQuery.refetch()}>重新加载</Button></div>}
-      {templateChanged && <p className="template-reset-warning field-full"><AlertTriangle size={16} />切换后会替换未执行工作项并按新流程重新排期；需求级说明保留。</p>}
+      {templateChanged && !templateResetBlocked && <p className="template-reset-warning field-full"><AlertTriangle size={16} />切换后会替换未执行工作项并按新流程重新排期；需求级说明保留。</p>}
+      {templateResetBlocked && <FormError>需求已有执行记录，不能切换流程。选择原流程后仍可调整日期。</FormError>}
+      {templateChanged && !templateResetBlocked && !changed && !needsRefresh && !unknown && <RequirementPlanPreview projectId={requirement.projectId} featureId={baseRequirement.featureId || ''} phaseId={baseRequirement.phaseId || ''} template={templates.find(template => template.id === templateId)} date={scheduleDate} mode={scheduleMode} replacingWorkItems={baseRequirement.workItems.length} />}
+      {!templateChanged && !changed && !needsRefresh && !unknown && baseRequirement.workItems.length > 0 && <RequirementSchedulePreview requirement={baseRequirement} date={scheduleDate} mode={scheduleMode} />}
+      {!changed && !needsRefresh && !unknown && baseRequirement.executionMode === 'direct' && <DirectRequirementSchedulePreview requirement={baseRequirement} date={scheduleDate} mode={scheduleMode} />}
       {(!!baseRequirement.actualStart||baseRequirement.workItems.some((item) => item.status !== "not_started")) && <FormField label="补充说明（可选）" full><textarea name="reason" rows={2} value={reason} onChange={(event) => {
         const value = event.target.value;
         if (value) dirtyFields.current.add("reason"); else dirtyFields.current.delete("reason");
         setReason(value);
         persistDraftIfLocked(currentDraft({ reason: value }));
       }} placeholder="可补充排期调整的背景" /></FormField>}
-      <></><p className="field-help field-full">{baseRequirement.executionMode==='direct'?"保存需求计划日期；预计工期未知时保留未确定的一端。":baseRequirement.workItems.length
+      <></><p className="field-help field-full">{templateResetBlocked ? "现有工作、人员和执行记录保持不变。" : templateChanged ? "确认后按所选流程重新生成工作项和计划，原人员分配不保留。" : baseRequirement.executionMode==='direct'?"工期未知时，只补充所选日期，保留另一端已填写的日期。":baseRequirement.workItems.length
         ? "修改日期会整体平移已有工作项，保留相对间隔、人员和实际日期；每个工作项仍可单独修改自定义计划。"
         : "保存后按当前流程生成工作项；需求负责人与全部排期就绪后自动进入未开始。"} 流程设计后续变更不会同步到当前需求。</p>
       {unknown&&!reviewRequired&&<FormError>刚才的提交结果待核对。输入已保留，请核对当前资料与操作记录；本窗口不会重复提交。</FormError>}<FormError>{mutation.error?.message}</FormError>
@@ -335,13 +355,14 @@ export function RequirementScheduleForm({
       {locked && <FormError>需求已完成或取消，不能继续调整计划。</FormError>}
       {refreshed && <p className="field-help field-full">已读取最新计划；未修改字段已同步，已输入内容保持不变。</p>}
       {(changed || needsRefresh) && <div className="field-full"><Button variant="secondary" type="button" className="ghost-button" disabled={pending} onClick={() => void reload()}>重新加载当前计划</Button></div>}
-      <FormSubmitActions submitLabel="保存排期" onCancel={()=>{clearDirty();clearBaseRequirement();clearTemplateId();clearScheduleMode();clearScheduleDate();clearReason();onClose();}} pending={pending} disabled={unknown || changed || needsRefresh || reviewRequired || locked || selectedTemplateUnavailable} />
+      <FormSubmitActions submitLabel="保存排期" onCancel={()=>{clearDirty();clearBaseRequirement();clearTemplateId();clearScheduleMode();clearScheduleDate();clearReason();onClose();}} pending={pending} disabled={unknown || changed || needsRefresh || reviewRequired || locked || selectedTemplateUnavailable || Boolean(templateResetBlocked) || missingScheduleAnchor} />
       </fieldset>
     </form>
     </Modal>
     {pendingSubmit && <ConfirmDialog title="切换需求流程" description={<>
       <p>目标流程：{pendingSubmit.templateName}<br />{pendingSubmit.input.scheduleMode === "start" ? "计划开始" : "计划完成"}：{pendingSubmit.input.plannedStart || pendingSubmit.input.plannedEnd}</p>
       <p>切换流程会替换当前未执行工作项、人员分配和计划，并按新流程重新生成；需求级说明将保留。</p>
-    </>} confirmLabel="确认切换" pendingLabel="切换中…" danger pending={pending} disabled={unknown || changed || needsRefresh || locked || selectedTemplateUnavailable} error={changed ? "需求计划已更新，请取消后重新加载当前计划。" : locked ? "需求已完成或取消，不能继续调整计划。" : selectedTemplateUnavailable ? "所选流程已不可用，请取消后重新选择。" : mutation.error?.message} onClose={() => { if (!submitting.current) setPendingSubmit(null); }} onConfirm={() => submit(pendingSubmit)} />}
+      {!templateResetBlocked && !changed && !needsRefresh && !unknown && <RequirementPlanPreview projectId={requirement.projectId} featureId={baseRequirement.featureId || ''} phaseId={baseRequirement.phaseId || ''} template={templates.find(template => template.id === pendingSubmit.input.templateId)} date={pendingSubmit.input.plannedStart || pendingSubmit.input.plannedEnd || ''} mode={pendingSubmit.input.scheduleMode} replacingWorkItems={baseRequirement.workItems.length} />}
+    </>} confirmLabel="确认切换" pendingLabel="切换中…" danger pending={pending} disabled={unknown || changed || needsRefresh || locked || selectedTemplateUnavailable || Boolean(templateResetBlocked)} error={changed ? "需求计划已更新，请取消后重新加载当前计划。" : locked ? "需求已完成或取消，不能继续调整计划。" : templateResetBlocked ? "需求已有执行记录，不能切换流程。" : selectedTemplateUnavailable ? "所选流程已不可用，请取消后重新选择。" : mutation.error?.message} onClose={() => { if (!submitting.current) setPendingSubmit(null); }} onConfirm={() => submit(pendingSubmit)} />}
   </>;
 }

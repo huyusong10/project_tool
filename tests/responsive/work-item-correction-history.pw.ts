@@ -19,8 +19,8 @@ test('连续纠错保留历史引用并在工作项记录中显示',async({page}
   const detail=page.locator('.modal-card-workspace[role=dialog]');
   const reasons=['首次核对：补充原记录的验证范围','再次核对：保留补充说明并明确验收样本'];
   for(const reason of reasons){
-    await detail.getByRole('button',{name:'修正实际日期',exact:true}).click();
-    const form=page.getByRole('dialog',{name:'修正实际日期',exact:true});
+    await detail.getByRole('button',{name:'修正日期与说明',exact:true}).click();
+    const form=page.getByRole('dialog',{name:'修正日期与说明',exact:true});
     if(source===original.id)for(const width of [1280,390]){
       await page.setViewportSize({width,height:844});
       await form.getByRole('combobox',{name:'工作项纠错关联历史记录',exact:true}).click();
@@ -33,9 +33,16 @@ test('连续纠错保留历史引用并在工作项记录中显示',async({page}
       await page.screenshot({path:info.outputPath('correction-source-'+width+'.png'),animations:'disabled'});
       await search.press('Escape');
     }
+    if(source===original.id){
+      await form.getByRole('textbox',{name:'纠错原因',exact:true}).fill(reason);
+      await form.getByRole('button',{name:'保存纠错',exact:true}).click();
+      await expect(form.getByRole('alert')).toContainText('仅更正说明时，请关联历史记录');
+    }
     await chooseOption(form.getByRole('combobox',{name:'工作项纠错关联历史记录',exact:true}),source);
+    await expect(form.getByRole('alert')).toHaveCount(0);
     await form.getByRole('textbox',{name:'纠错原因',exact:true}).fill(reason);
     await form.getByRole('button',{name:'保存纠错',exact:true}).click();await expect(form).toHaveCount(0);
+    await expect(page.getByLabel('操作反馈').getByText('纠错已保存',{exact:true}).last()).toBeVisible();
     const current=await read(),correction=current.progressUpdates!.find(u=>u.workItemId===workId&&u.content===reason)!;
     expect(correction).toMatchObject({eventType:'correction',supersedesId:source,workItemPercent:70});
     source=correction.id;

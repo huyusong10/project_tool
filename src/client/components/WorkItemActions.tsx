@@ -24,7 +24,7 @@ type ActionReceipt = {action:string; expectedVersion:number; body:Record<string,
 type ExpectedOutcome = {successMessage?: string; request:ActionReceipt};
 
 function WorkActionSurface({anchorRef, panel, pending, onClose, children}: {anchorRef: RefObject<HTMLElement | null>; panel: Panel | null; pending: boolean; onClose: () => void; children: ReactNode}) {
-  if (panel && panel !== 'menu') return <Modal title={{complete: '完成工作项', dates: '修正实际日期', backfill: '按期完成（历史补录）'}[panel]} width={480} closable={!pending} onClose={onClose}>{children}</Modal>;
+  if (panel && panel !== 'menu') return <Modal title={{complete: '完成工作项', dates: '修正日期与说明', backfill: '按期完成（历史补录）'}[panel]} width={480} closable={!pending} onClose={onClose}>{children}</Modal>;
   return <AnchoredPopover role={panel==='menu'?'menu':'dialog'} anchorRef={anchorRef} align={panel==='menu'?'end':'start'} open={panel !== null} onOutside={onClose} width={panel === 'menu' ? 210 : 390} className={panel === 'menu' ? 'action-menu' : ''}>{children}</AnchoredPopover>;
 }
 
@@ -214,7 +214,7 @@ export function WorkItemActions({
       ? <span className="work-action-state is-cancelled is-icon-only" role="img" aria-label="已取消" title="已取消"><CircleStop size={16} /></span>
       : null;
 
-  const datesAction = canCorrect && <Button aria-label="修正实际日期" title="修正实际日期" variant={presentation==='detail'?'ghost':'menu'} size="compact" disabled={pending || actionReviewBlocked || needsRefresh} type="button" onClick={() => openPanel("dates")}>{presentation!=="detail"&&<CalendarDays size={14} />}修正</Button>;
+  const datesAction = canCorrect && <Button aria-label="修正日期与说明" title="修正日期与说明" variant={presentation==='detail'?'ghost':'menu'} size="compact" disabled={pending || actionReviewBlocked || needsRefresh} type="button" onClick={() => openPanel("dates")}>{presentation!=="detail"&&<CalendarDays size={14} />}修正</Button>;
   const backfillAction = canBackfill && <Button aria-label="按期完成（历史补录）" title="按期完成（历史补录）" variant={presentation==='detail'?'ghost':'menu'} size="compact" disabled={pending || actionReviewBlocked || needsRefresh} type="button" onClick={() => openPanel("backfill")}>{presentation!=="detail"&&<Check size={14} />}补录</Button>;
   const reopenAction = !stateChangesDisabled && canManage && ["completed", "cancelled"].includes(item.status) && <Button aria-label="重开/返工" title="重开/返工" width={presentation==='detail'?'action':undefined} variant={presentation==='detail'?'secondary':'menu'} size="compact" disabled={pending || actionReviewBlocked || needsRefresh} onClick={() => void run(() => onAction("reopen", undefined, item.version), {successMessage:"工作项已重新打开",request:{action:"reopen",expectedVersion:item.version,body:{}}})}><RotateCcw size={14} />重开</Button>;
   const cancelAction = !stateChangesDisabled && canManage && onCancel && !["completed", "cancelled"].includes(item.status) && <Button aria-label="取消工作项" title="取消工作项" variant={presentation==='detail'?'ghost':'menu'} size="compact" disabled={pending || actionReviewBlocked || needsRefresh} tone="danger" className="danger" onClick={() => { if (onCancel) void run(() => onCancel("", item.version), {successMessage:"工作项已取消",request:{action:"cancel",expectedVersion:item.version,body:{reason:""}}}); }}>{presentation!=="detail"&&<CircleStop size={14} />}取消</Button>;
@@ -260,21 +260,21 @@ export function WorkItemActions({
               : actualStart && correctedEnd && correctedEnd < actualStart
                 ? "实际完成日期不能早于实际开始日期。"
                 : actualStart === (item.actualStart || "") && correctedEnd === (item.actualEnd || "") && !supersedesId
-                  ? "实际日期没有变化，无需保存。"
+                  ? "实际日期没有变化；仅更正说明时，请关联历史记录。"
                   : "";
         setValidationError(nextValidationError);
         if (!nextValidationError && onSaveDates) void run(
           () => onSaveDates({ actualStart: actualStart || null, actualEnd: correctedEnd || null, reason: reason.trim(), supersedesId: supersedesId || null }, baselineVersion),
-          {successMessage:"实际日期已修正",request:{action:"dates",expectedVersion:baselineVersion,body:{actualStart:actualStart||null,actualEnd:correctedEnd||null,reason:reason.trim(),supersedesId:supersedesId||null}}},
+          {successMessage:"纠错已保存",request:{action:"dates",expectedVersion:baselineVersion,body:{actualStart:actualStart||null,actualEnd:correctedEnd||null,reason:reason.trim(),supersedesId:supersedesId||null}}},
         );
       }}>
-        <p>仅修正历史实际日期，不改变工作项状态和进度；系统会保留原记录和纠错原因。</p>
+        <p>可修正实际日期，或关联历史记录补充更正说明。工作项状态和完成度保持，原记录与更正说明都会保留。</p>
         <div className="inline-action-date-grid">
           <label><span>实际开始{item.status !== "cancelled" && "（必填）"}</span><input aria-label="实际开始" type="date" disabled={pending} max={item.status === "cancelled" && item.cancelledAt ? item.cancelledAt : today} value={actualStart} onChange={(event) => { setActualStart(event.target.value); setValidationError(""); }} /></label>
           {item.status === "completed" && <label><span>实际完成（必填）</span><input aria-label="实际完成" type="date" disabled={pending} min={actualStart || undefined} max={today} value={actualEnd} onChange={(event) => { setActualEnd(event.target.value); setValidationError(""); }} /></label>}
         </div>
         {item.status === "cancelled" && item.cancelledAt && <small>取消日期：{item.cancelledAt}</small>}
-        {!!historyOptions.length && <label><span>关联历史记录（可选）</span><Select aria-label="工作项纠错关联历史记录" disabled={pending} value={supersedesId} onChange={(event) => setSupersedesId(event.target.value)}><option value="">不指定</option>{historyOptions}</Select></label>}
+        {!!historyOptions.length && <label><span>关联历史记录（可选）</span><Select aria-label="工作项纠错关联历史记录" disabled={pending} value={supersedesId} onChange={(event) => { setSupersedesId(event.target.value); setValidationError(""); }}><option value="">不指定</option>{historyOptions}</Select></label>}
         <label><span>纠错说明（可选）</span><textarea aria-label="纠错原因" readOnly={pending} rows={2} value={reason} onChange={(event) => { setReason(event.target.value); setValidationError(""); }} placeholder="说明为什么修正历史数据" /></label>
         {validationError && <p className="form-error" role="alert">{validationError}</p>}
         {error && <p className="form-error">{error}</p>}

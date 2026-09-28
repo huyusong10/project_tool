@@ -1,0 +1,37 @@
+@layer application {
+.jira-section-header,.jira-section-header h2,.jira-check{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.jira-section-header{justify-content:space-between}.jira-section-header h2{font-size:17px;margin:0}
+.jira-connection-body{padding:20px 16px;display:grid;gap:18px;min-width:0}.jira-connection-body>.form-error:empty{display:none}
+.jira-connection-facts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:24px;margin:0}
+.jira-connection-facts dt{font-size:12px;color:var(--text-muted)}.jira-connection-facts dd{margin:5px 0;overflow-wrap:anywhere}
+.jira-credential-form{width:100%;max-width:680px;display:grid;gap:12px}.jira-credential-form input{width:100%}
+.jira-connection-status,.jira-saved-credential,.jira-saved-credential>div,.jira-connection-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.jira-connection-status{font-size:12px;color:var(--text-muted)}.jira-connection-status.is-verified,.jira-connection-message{color:var(--success)}
+.jira-connection-message{margin:0;font-size:13px}.jira-saved-credential{justify-content:space-between;border-top:1px solid var(--divider);padding-top:16px;gap:16px}.jira-saved-credential>div:first-child{font-size:13px;color:var(--text-secondary)}
+.jira-setup-notice{border-left:3px solid var(--border-strong);padding:4px 12px;color:var(--text-secondary);font-size:13px;line-height:1.65;overflow-wrap:anywhere}
+.jira-progress-page{min-width:0}.jira-view-tabs{width:320px;max-width:100%;margin-bottom:14px}.jira-progress-summary{display:flex;align-items:center;flex-wrap:wrap;gap:6px 16px;color:var(--text-muted);font-size:12px;padding:12px 2px 0;overflow-wrap:anywhere}
+.jira-progress-page .filter-bar{display:grid;grid-template-columns:minmax(0,1fr) auto auto;grid-template-rows:36px 52px;gap:8px 10px;align-items:center}
+.jira-progress-page .filter-bar .search-box{grid-column:1;grid-row:1;width:100%;max-width:320px;min-width:0;height:36px;box-sizing:border-box}
+.jira-progress-page .filter-bar>.filter-bar-result{grid-column:2;grid-row:1;margin:0}.jira-progress-page .filter-bar>.gantt-reset-button{grid-column:3;grid-row:1;height:36px;min-height:36px}
+.jira-filter-fields{grid-column:1/-1;grid-row:2;display:flex;align-items:flex-start;gap:10px;height:52px;min-width:0;overflow-x:auto;overflow-y:hidden}
+.jira-filter-fields>.select-field{flex:1 0 140px;min-width:140px;max-width:200px;margin:0}.jira-filter-fields .select-trigger{height:36px;min-height:36px}.jira-filter-fields>.jira-check{height:36px;flex:none;margin:0}
+.jira-progress-page a,.jira-action-content a,.jira-requirement-section a{color:var(--accent-ink);text-decoration:none}.jira-progress-page a:hover,.jira-action-content a:hover,.jira-requirement-section a:hover{text-decoration:underline;text-underline-offset:3px}
+.jira-progress-page .text-muted,.jira-action-content .text-muted,.jira-requirement-section .text-muted,.jira-history .text-muted{color:var(--text-muted)}.jira-progress-page .text-danger,.jira-requirement-section .text-danger{color:var(--danger)}
+.jira-cell-stack{display:flex;flex-direction:column;align-items:flex-start;gap:5px;min-width:0;overflow-wrap:anywhere}.jira-cell-stack small{display:block;font-size:12px;color:var(--text-muted)}
+.jira-requirement-title{font-weight:600;line-height:1.6;overflow-wrap:anywhere;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}.jira-issue-link,.jira-action-heading>a,.jira-requirement-content a{display:inline-flex;align-items:center;gap:5px}
+.jira-row-controls{display:flex;align-items:center;justify-content:flex-end;gap:4px;flex-wrap:nowrap}.jira-check{font-size:13px;gap:6px;white-space:nowrap}.jira-check input[type="checkbox"]{width:16px;height:16px;margin:0;flex:none}
+.modal-body-workspace:has(>.jira-settings-form){padding:0;display:flex;flex-direction:column}
+.jira-settings-form{display:flex;flex-direction:column;flex:1;min-height:0;min-width:0}.jira-settings-form>.jira-settings-content{flex:1;overflow:auto;padding:18px 20px;min-width:0}.jira-settings-content>.jira-check{margin-bottom:18px}
+.jira-settings-content .form-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.jira-settings-content .field{min-width:0}
+.jira-settings-footer{flex:none;padding:0 20px 16px;border-top:1px solid var(--border);background:var(--bg-surface)}.jira-settings-footer .form-actions{margin:0;flex-wrap:wrap}.jira-settings-feedback{min-height:42px;display:flex;align-items:center}.jira-settings-feedback .form-error{margin:0}
+.jira-multi-select{min-width:0;max-width:100%}.jira-multi-select .select-trigger>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.jira-multi-popover .select-search input{min-width:0}
+.jira-picker-error{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px;color:var(--danger);font-size:13px;overflow-wrap:anywhere}.jira-create-label{max-width:100%;white-space:normal;overflow-wrap:anywhere}
+.jira-action-content{display:grid;gap:16px;min-width:0}.jira-action-heading{display:flex;align-items:center;flex-wrap:wrap;gap:10px}.jira-action-heading strong{flex:1 1 180px;overflow-wrap:anywhere}
+.jira-state-change{display:flex;align-items:center;flex-wrap:wrap;gap:12px;padding:12px 0;color:var(--text-secondary)}.jira-state-change>*{overflow-wrap:anywhere;max-width:100%}.jira-operation-result{border-bottom:1px solid var(--border);padding-bottom:14px}.jira-operation-result p{font-size:13px;overflow-wrap:anywhere}
+.jira-action-content .form-actions{margin:0;flex-wrap:wrap}.jira-action-content input,.jira-settings-content textarea{width:100%;min-width:0}
+.jira-transition-content{display:flex;flex-direction:column;min-height:min(400px,calc(100dvh - 180px))}.jira-transition-content>.field{align-self:stretch}.jira-transition-content>.form-actions{margin-top:auto}
+.jira-requirement-section{border-top:1px solid var(--border);margin-top:18px;padding:16px 0}.jira-requirement-section>header,.jira-requirement-content{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}.jira-requirement-section h3{font-size:14px;margin:0}.jira-requirement-content{margin-top:12px}
+.jira-history{height:100%;min-height:0}.jira-history-row{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:14px 4px;border-bottom:1px solid var(--border)}.jira-history-row>button{flex:none}
+@media(max-width:680px){.jira-connection-facts{grid-template-columns:1fr;gap:12px}.jira-saved-credential{align-items:flex-start}.jira-settings-content .form-grid{grid-template-columns:minmax(0,1fr)}.jira-row-controls{justify-content:flex-start}.jira-history-row{align-items:flex-start;flex-wrap:wrap}.jira-view-tabs{width:100%}
+.jira-progress-page .filter-bar{grid-template-columns:minmax(0,1fr) auto;grid-template-rows:36px 36px 52px}.jira-progress-page .filter-bar .search-box{grid-column:1/-1;max-width:none}.jira-progress-page .filter-bar>.filter-bar-result{grid-column:1;grid-row:2}.jira-progress-page .filter-bar>.gantt-reset-button{grid-column:2;grid-row:2}.jira-filter-fields{grid-row:3}.jira-filter-fields>.select-field{flex:0 0 calc((100% - 10px)/2);min-width:110px;max-width:none}}
+}

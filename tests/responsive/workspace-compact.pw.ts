@@ -28,11 +28,8 @@ test('无 Phase 的并行需求保持紧凑，折叠时有工作项入口，只�
   await expect(row.locator('.workspace-row-label .workspace-row-progress')).toHaveCount(0);
   await expect(row.locator('.workspace-row-progress')).toContainText('设计90%开发17%');
   expect((await row.boundingBox())!.height).toBeLessThanOrEqual(66);
-  const milestone=row.locator('[data-milestone-id="'+milestoneId+'"]');await expect(milestone).toBeVisible();
-  await milestone.click();await expect(page.getByRole('dialog',{name:'里程碑详情'})).toContainText('提测就绪');await expect(page.getByRole('dialog',{name:'里程碑详情'}).locator('.gantt-milestone-summary')).toHaveCount(4);await page.keyboard.press('Escape');
-  await page.mouse.move(5,5);await row.locator('.workspace-row-title').focus();await expect(page.getByRole('tooltip')).toHaveCount(1);await expect(page.getByRole('tooltip')).toContainText(f.testing.ownerName!);await page.keyboard.press('Escape');
-  await expect(milestone).toHaveAccessibleName(/最近达成：需求基线/);
-  const dateLabel=await milestone.boundingBox(),actual=await row.locator('.gantt-date-actual').boundingBox();expect(dateLabel!.y+dateLabel!.height).toBeLessThan(actual!.y);
+  await expect(row.locator('[data-milestone-id]')).toHaveCount(0);
+  await page.mouse.move(5,5);await row.locator('.workspace-row-title').focus();const history=page.getByRole('tooltip');await expect(history).toContainText(f.testing.ownerName!);await history.locator('.workspace-summary-milestones summary').click();await expect(history).toContainText('提测就绪');await expect(history.locator('.workspace-summary-milestones>p')).toHaveCount(4);await page.keyboard.press('Escape');
   const progressEntry=row.getByRole('button',{name:'更新进展',exact:true}),position=await progressEntry.boundingBox();
   await progressEntry.click();const detail=page.locator('.modal-card-workspace');await expect(detail.getByRole('tab',{name:'工作项 2',exact:true})).toHaveAttribute('aria-selected','true');await detail.getByRole('button',{name:'关闭',exact:true}).click();
   expect(await progressEntry.boundingBox()).toEqual(position);await row.getByRole('button',{name:'展开 '+requirement.title,exact:true}).click();

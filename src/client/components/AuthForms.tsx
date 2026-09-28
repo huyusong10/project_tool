@@ -58,6 +58,7 @@ export function LoginDialog({ onClose, branding }: { onClose: () => void; brandi
       }}
     >
       <BrandLogo branding={branding} className="login-brand-logo" />
+      <p className="login-brand-name field-full"><strong>{branding.systemName}</strong></p>
       <p className="field-help field-full">
         登录后按账号角色进入个人工作台或项目管理功能。
       </p>

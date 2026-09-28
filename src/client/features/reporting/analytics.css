@@ -34,6 +34,7 @@
 .analytics-drag-handle:active { cursor: grabbing; }
 .analytics-drag-item > .analytics-panel > header { padding-left: 43px; }
 .analytics-panel-body { flex: 1; min-height: 0; padding: 10px 12px 12px; }
+.analytics-panel-link { padding: 0 13px 12px; }
 .analytics-panel-body > .chart { height: 100%; min-height: 240px; }
 .analytics-panel-loading { height: 100%; min-height: 120px; display: grid; place-items: center; color: var(--text-faint); font-size: 13px; }
 .analytics-panel-body .empty-state { min-height: 160px; padding: 16px; }

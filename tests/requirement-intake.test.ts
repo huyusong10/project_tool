@@ -23,6 +23,46 @@ async function apply(id:string,p:ImportPreview,batchId=randomUUID()){
   return post(`/api/projects/${id}/requirement-import/apply`,{package:p.package,previewToken:p.previewToken,expectedRevision:p.expectedRevision,batchId});
 }
 async function imported(){const p=await project(),v=await preview(p.id);expect(v.errors).toEqual([]);const result=await apply(p.id,v);expect(result.statusCode,result.body).toBe(200);const receipt=result.json<Extract<ImportReceipt,{status:'applied'}>>();return {id:p.id,requirementId:receipt.requirementIds['query'],receipt};}
+it('导入计划按工作项提示缺项，完整日期保存为需求汇总范围',async()=>{
+  const p=await project(),pkg=structuredClone(intakeExample),r=pkg.requirements[0];
+  r.plannedStart='2026-09-28';r.plannedEnd='2026-09-30';
+  const missing=await preview(p.id,pkg);
+  expect(missing.warnings).toContain('查询与详情 / 查询接口：计划日期尚未补齐');
+  expect(missing.warnings).toContain('查询与详情 / 查询页面与联调：计划日期尚未补齐');
+  delete r.plannedStart;delete r.plannedEnd;
+  Object.assign(r.workItems[0],{plannedStart:'2026-09-28',plannedEnd:'2026-09-29'});
+  Object.assign(r.workItems[1],{plannedStart:'2026-09-30',plannedEnd:'2026-09-30'});
+  const ready=await preview(p.id,pkg);expect(ready.errors).toEqual([]);
+  expect(ready.warnings.some(w=>w.includes('计划日期尚未补齐'))).toBe(false);
+  const saved=await apply(p.id,ready);expect(saved.statusCode,saved.body).toBe(200);
+  const detail=(await request('GET','/api/requirements/'+saved.json().requirementIds.query)).json();
+  expect(detail).toMatchObject({plannedStart:'2026-09-28',plannedEnd:'2026-09-30',executionMode:'work_items'});
+  expect(detail.workItems).toEqual(expect.arrayContaining(r.workItems.map(w=>expect.objectContaining({title:w.title,plannedStart:w.plannedStart,plannedEnd:w.plannedEnd}))));
+  const update=intakePackageSchema.parse({formatVersion:3,requirements:[{key:'query',action:'update',existingId:detail.id,expectedVersion:detail.version,title:detail.title,background:'补充计划核对依据'}]});
+  const kept=await preview(p.id,update);expect(kept.errors).toEqual([]);expect(kept.warnings).toEqual([]);
+  expect((await apply(p.id,kept)).statusCode).toBe(200);
+  const updated=(await request('GET','/api/requirements/'+detail.id)).json();
+  expect(updated).toMatchObject({plannedStart:detail.plannedStart,plannedEnd:detail.plannedEnd,background:'补充计划核对依据'});
+  const workFacts=(value:typeof detail)=>value.workItems.map((w:{id:string;title:string;status:string;progress:number;version:number;ownerId:string|null;plannedStart:string|null;plannedEnd:string|null})=>({id:w.id,title:w.title,status:w.status,progress:w.progress,version:w.version,ownerId:w.ownerId,plannedStart:w.plannedStart,plannedEnd:w.plannedEnd}));
+  expect(workFacts(updated)).toEqual(workFacts(detail));
+  const logs=(await request('GET','/api/audit/search?'+new URLSearchParams({projectId:p.id,q:'导入'}))).json();
+  expect(logs.items.filter((item:{action:string})=>item.action==='import').map((item:{summary:string})=>item.summary)).toEqual([
+    '导入需求：新增 0 个，更新 1 个，新增工作项 0 个','导入需求：新增 1 个，更新 0 个，新增工作项 2 个',
+  ]);
+  const placement=logs.items.find((item:{summary:string})=>item.summary.startsWith('导入调整归属：'));
+  expect(JSON.parse(placement.summary.slice('导入调整归属：'.length))).toMatchObject({title:detail.title,before:{featureId:detail.featureId,featureName:detail.featureName,phaseId:null,phaseName:null},after:{featureId:detail.featureId,featureName:detail.featureName,phaseId:detail.phaseId,phaseName:detail.phaseName}});
+});
+it('更新直接执行需求按保留或明确修改后的日期提示缺项，预览不改写计划',async()=>{
+  const p=await project(),created=await post('/api/requirements',{projectId:p.id,title:'核对发布索引',plannedStart:'2026-09-28',plannedEnd:'2026-09-29'});
+  expect(created.statusCode,created.body).toBe(200);
+  const detail=(await request('GET','/api/requirements/'+created.json().id)).json();
+  for(const [dates,missing] of [[{},false],[{plannedStart:'2026-09-29'},false],[{plannedEnd:null},true]] as const){
+    const pkg=intakePackageSchema.parse({formatVersion:3,requirements:[{key:'r',action:'update',existingId:detail.id,expectedVersion:detail.version,title:detail.title,background:'补充说明',...dates}]});
+    const result=await preview(p.id,pkg);expect(result.errors).toEqual([]);
+    expect(result.warnings).toEqual(missing?[detail.title+'：计划日期尚未补齐']:[]);
+    expect((await request('GET','/api/requirements/'+detail.id)).json()).toEqual(detail);
+  }
+});
 it('未指定特性的需求归入同一系统其他需求，显式特性与失败批次保持原归属',async()=>{
   const p=await project();
   const first=(await post('/api/requirements',{projectId:p.id,title:'待分类工作'})).json();
@@ -145,7 +185,7 @@ it('重复需求提醒，显式更新只修改核对过的字段并保留工作�
  const p=await imported(),duplicate=await preview(p.id);expect(duplicate.errors.some(x=>x.includes('同名需求'))).toBe(true);
  const before=(await request('GET','/api/requirements/'+p.requirementId)).json(),pkg=structuredClone(intakeExample);
  pkg.requirements=[{key:'query',action:'update',existingId:before.id,expectedVersion:before.version,confirmAdditional:false,title:before.title,background:'补充后的原始需求',workItems:[]}];pkg.dependencies=[];
- const v=await preview(p.id,pkg);expect(v.errors).toEqual([]);expect((await apply(p.id,v)).statusCode).toBe(200);
+ const v=await preview(p.id,pkg);expect(v.errors).toEqual([]);expect(v.warnings).toContain(before.title+'：计划日期尚未补齐');expect((await apply(p.id,v)).statusCode).toBe(200);
  const after=(await request('GET','/api/requirements/'+before.id)).json();expect(after.background).toBe('补充后的原始需求');expect(after.status).toBe(before.status);expect(after.workItems.map((w:{id:string})=>w.id)).toEqual(before.workItems.map((w:{id:string})=>w.id));
  expect((await preview(p.id,pkg)).errors.some(x=>x.includes('版本变化'))).toBe(true);
 });

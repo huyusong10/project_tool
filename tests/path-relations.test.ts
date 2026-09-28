@@ -84,12 +84,12 @@ describe('就地交付条件',()=>{
   });
   it('describes exact handoffs, qualified endpoints and aggregate counts',()=>{
     const data=fixture(),whole=data.dependencies.find(d=>d.id==='whole')!;
-    expect(relationCaption(data,whole)).toBe('验收后开始');
+    expect(relationCaption(data,whole)).toBe('需求完成后开始');
     const partial=dependency('partial','A','A1','B',null),targeted=dependency('target','A',null,'B','B2');
-    expect(relationCaption(data,partial)).toBe('A1后开始');expect(relationCaption(data,targeted)).toBe('验收 → B2');
+    expect(relationCaption(data,partial)).toBe('A1后开始');expect(relationCaption(data,targeted)).toBe('需求完成 → B2');
     expect(relationDescription(data,partial)).toBe('A · A1 → B · 整个需求开始');
     data.dependencies.push(partial);const edge=projectPathGraph(data).links.find(e=>e.source==='A'&&e.target==='B')!;
-    expect(edge.label).toBe('2 条交付关系');expect(edge.description).toContain('A · 整需求验收 → B · 整个需求开始');expect(edge.description).toContain('A · A1');expect(edge.dependencyIds).toEqual(['whole','partial']);
+    expect(edge.label).toBe('2 条交付关系');expect(edge.description).toContain('A · 整个需求完成 → B · 整个需求开始');expect(edge.description).toContain('A · A1');expect(edge.dependencyIds).toEqual(['whole','partial']);
   });
   it('long names stay readable on hover without widening a graph label indefinitely',()=>{
     const data=fixture();data.nodes.find(n=>n.id==='A1')!.title='完整交付条件名称非常长'.repeat(8);data.dependencies=[dependency('p','A','A1','B','B2')];

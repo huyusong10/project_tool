@@ -1,0 +1,62 @@
+import { expect, test, type APIRequestContext } from '@playwright/test';
+import type { Requirement } from '../../src/client/types';
+import { addBusinessDays, todayIso } from '../../src/shared/domain';
+
+test('经理从待处理补齐直接需求日期，提示消失且执行人读到完整计划', async ({ page, browser, baseURL }, info) => {
+  const post = async (request: APIRequestContext, url: string, data: object) => {
+    const response = await request.post(url, { data });
+    expect(response.ok(), await response.text()).toBe(true);
+    return response.json();
+  };
+  await post(page.request, '/api/login', { username: 'admin', password: '41_xc7q0qOjo4Inw!' });
+  const project = await post(page.request, '/api/projects', { name: '补齐安排 ' + Date.now() });
+  const owner = await post(page.request, '/api/people', { projectId: project.id, name: '补齐执行人 ' + Date.now() });
+  const start = addBusinessDays(todayIso(), 0), end = addBusinessDays(start, 3);
+  const requirement = await post(page.request, '/api/requirements', { projectId: project.id, ownerId: owner.id, title: '核对交付材料', plannedEnd: end });
+  await post(page.request, '/api/requirements/' + requirement.id + '/start', { expectedVersion: requirement.version });
+  const detail = async () => await (await page.request.get('/api/requirements/' + requirement.id)).json() as Requirement;
+  const before = await detail();
+  await page.goto('/actions?projectId=' + project.id);
+  await page.getByLabel('行动原因', { exact: true }).selectOption({ label: '排期不完整' });
+  await page.getByRole('button', { name: new RegExp(requirement.title + '.*排期不完整') }).click();
+  await page.getByRole('tab', { name: '概况', exact: true }).click();
+  await page.getByRole('button', { name: '安排缺失的计划日期', exact: true }).click();
+  const form = page.getByRole('dialog', { name: '调整需求计划', exact: true });
+  await form.getByLabel('计划开始', { exact: true }).fill(addBusinessDays(end, 1));
+  await expect(form.getByRole('alert')).toHaveText('计划开始不能晚于计划完成');
+  await form.getByRole('button', { name: '保存排期', exact: true }).click();
+  await expect(form.getByLabel('计划开始', { exact: true })).toHaveValue(addBusinessDays(end, 1));
+  expect(await detail()).toEqual(before);
+  await form.getByLabel('计划开始', { exact: true }).fill(start);
+  await form.getByLabel('补充说明（可选）', { exact: true }).fill('补齐接手前遗漏的开始日期');
+  const preview = form.getByRole('region', { name: '计划调整预览', exact: true });
+  await expect(preview).toContainText(start + ' ～ ' + end);
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(await preview.evaluate(element => element.scrollWidth <= element.clientWidth + 1)).toBe(true);
+  await form.getByRole('button', { name: '保存排期', exact: true }).scrollIntoViewIfNeeded();
+  await page.screenshot({ path: info.outputPath('partial-plan-390.png') });
+  await form.getByRole('button', { name: '保存排期', exact: true }).click();
+  await expect(form).toHaveCount(0);
+  await page.reload();
+  await expect(page.getByRole('region', { name: '执行进展', exact: true })).toContainText(start + ' ～ ' + end);
+  await expect(page.getByRole('button', { name: '安排缺失的计划日期', exact: true })).toHaveCount(0);
+  await page.getByRole('button', { name: '关闭', exact: true }).click();
+  await page.getByRole('link', { name: '项目待处理', exact: true }).click();
+  await expect(page.getByLabel('行动原因', { exact: true })).toHaveValue('incomplete_schedule');
+  await expect(page.getByText('没有匹配的待处理事项', { exact: true })).toBeVisible();
+  const after = await detail();
+  expect(after).toMatchObject({ plannedStart: start, plannedEnd: end, progress: before.progress, actualStart: before.actualStart, status: before.status });
+  expect(after.progressUpdates).toEqual(expect.arrayContaining(before.progressUpdates!));
+  expect(after.progressUpdates).toHaveLength(before.progressUpdates!.length + 1);
+  const context = await browser.newContext({ baseURL });
+  try {
+    await post(context.request, '/api/login', { username: owner.name, password: '888888' });
+    await post(context.request, '/api/account/change-password', { currentPassword: '888888', newPassword: 'action-schedule-password' });
+    const actor = await context.newPage();
+    await actor.goto('/my-work');
+    await actor.getByRole('button', { name: new RegExp('^' + requirement.title + ' ' + project.name) }).click();
+    await expect(actor.getByRole('region', { name: '执行进展', exact: true })).toContainText(start + ' ～ ' + end);
+    await actor.getByRole('tab', { name: '记录', exact: true }).click();
+    await expect(actor.getByRole('region', { name: '进展记录', exact: true })).toContainText('补齐接手前遗漏的开始日期');
+  } finally { await context.close(); }
+});

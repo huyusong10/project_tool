@@ -265,9 +265,10 @@ export function updateIssue(id: string, input: JsonObject, actor: Actor) {
       requirementId, sourceRef, title, impact, reporter, ownerId, priority, discoveredAt, dueDate, nextReviewAt, resolvedAt, now, id, current.version,
     );
     assertVersionedWrite(changed, '问题');
-    const reason = nullableText(input.reason) || describeChanges(current,input);
+    const next = {requirementId,sourceRef,title,impact,reporter,ownerId,priority,discoveredAt,dueDate,nextReviewAt,resolvedAt};
+    const reason = nullableText(input.reason) || describeChanges(current,next);
     if (historical) appendIssueEvent(id, 'correction', reason, actor, current.progress, null, now);
-    audit(actor, historical ? 'correct' : 'update', 'issue', id, JSON.stringify(changeSnapshot(current,{requirementId,sourceRef,title,impact,reporter,ownerId,priority,discoveredAt,dueDate,nextReviewAt,resolvedAt},reason)));
+    audit(actor, historical ? 'correct' : 'update', 'issue', id, JSON.stringify(changeSnapshot(current,next,reason)));
     requireActiveProject(projectId, true);
     if (requirementId) issueRequirement(projectId, requirementId, true);
     validateOwner();

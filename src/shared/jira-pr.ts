@@ -1,0 +1,28 @@
+import { z } from 'zod';
+import type { ProgressUpdate } from './api/progress';
+import type { JiraIssue, JiraStatus } from './jira';
+
+export const jiraProgressSyncLabels = { pending: '待同步', in_pr: 'PR 中', synced: '已同步', ignored: '不再同步' } as const;
+export type JiraProgressSyncState = keyof typeof jiraProgressSyncLabels;
+export type PrSource = ProgressUpdate & { jiraSyncState: JiraProgressSyncState; jiraPrId: string | null; jiraCommentId: string | null; jiraSyncedAt: string | null };
+export type PrReceipt = { state: 'pending' | 'running' | 'success' | 'failed' | 'unknown'; message?: string; commentId?: string; accountId?: string; identity?: string; at?: string; from?: JiraStatus; target?: JiraStatus; operation?: string };
+export type PrStep = { id: string; kind: 'comment' | 'transition'; body: string; generatedBody?: string; sourceIds: string[]; target: JiraStatus | null; transitionId: string | null; transitionName: string | null; comment: PrReceipt; transition: PrReceipt };
+export type PrWork = { id: string | null; title: string; stage: string | null; status: string; progress: number; actualStart: string | null; actualEnd: string | null };
+export type PrItem = { requirementId: string; title: string; featureName: string | null; phaseName: string | null; key: string; issueId: string; site: string; bindingVersion: string; basis: string; localStatus?: string; localProgress?: number; decisionRequired: boolean; reviewRequired?: boolean; overview?: string[]; work?: PrWork[]; sources: PrSource[]; steps: PrStep[] };
+export type PrScope = { featureIds: Array<string | null>; excludedRequirementIds: string[]; manualRequirementIds?: string[] };
+export type JiraPr = { id: string; projectId: string; version: number; state: 'active' | 'running' | 'completed' | 'abandoned'; startedAt: string | null; createdAt: string; updatedAt: string; scope: PrScope; collectedAt: string; items: PrItem[]; warnings: string[] };
+export type PrCandidate = { requirementId: string; title: string; featureId: string | null; featureName: string | null; phaseName: string | null; archived: boolean; key: string | null; localStatus?: string; localProgress?: number; sources: PrSource[] };
+export type PrGeneration = { id: string; prId: string | null; version: number; scope: PrScope; collectedAt: string; items: PrItem[]; warnings: string[] };
+export type JiraWorkflow = { name: string; edges: Array<{ id: string; name: string; from: JiraStatus; to: JiraStatus }> };
+export type PrRemote = { issue: JiraIssue; site: string; bindingVersion: string; statuses: JiraStatus[]; workflow?: JiraWorkflow | null; transitions: Array<{ id: string; name: string; to: JiraStatus; requiredFields: string[] }>; checkedAt: string };
+export type PrPreview = { id: string; prId: string; version: number; identity: string | null; createdAt: string; items: Array<{ requirementId: string; issueId: string; site: string; issue: JiraIssue; steps: PrStep[]; outcome: 'ready' | 'running' | 'success' | 'failed' | 'unknown' }> };
+export type PrTargetPlan = { version: number; requirementId: string; remote: PrRemote; routes: JiraWorkflow['edges'][]; steps: PrStep[] | null; retainedComments: number };
+const id = z.string().min(1).max(200);
+export const prScopeSchema = z.object({ featureIds: z.array(id.nullable()).min(1), excludedRequirementIds: z.array(id).default([]), manualRequirementIds: z.array(id).optional() }).strict();
+export const prVersionSchema = z.object({ version: z.number().int().positive() }).strict();
+export const prGenerateSchema = z.object({ scope: prScopeSchema, prId: id.optional(), version: z.number().int().positive().optional() }).strict();
+export const prEditStepSchema = z.object({ id, kind: z.enum(['comment', 'transition']), body: z.string().max(1000000), generatedBody: z.string().max(1000000).optional(), sourceIds: z.array(id), target: z.object({ id, name: z.string().min(1).max(300) }).nullable(), transitionId: id.nullable(), transitionName: z.string().max(300).nullable() }).strict();
+export const prTargetSchema = prVersionSchema.extend({ requirementId: id, targetId: id.nullable(), routeIds: z.array(id).max(30).optional(), regenerate: z.boolean().optional() }).strict();
+export const prEditSchema = z.object({ version: z.number().int().positive(), items: z.array(z.object({ requirementId: id, decisionRequired: z.boolean(), reviewRequired: z.boolean().optional(), steps: z.array(prEditStepSchema).max(30) }).strict()) }).strict();
+export type PrEdit = z.infer<typeof prEditSchema>;
+export const prRecheckSchema = z.object({ requirementId: id, stepId: id, part: z.enum(['comment', 'transition']), resolution: z.enum(['applied', 'not_applied']).optional() }).strict();

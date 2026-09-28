@@ -50,6 +50,30 @@ async function createIssue(title = '日期状态校验') {
   return response.json<IssueRecord>();
 }
 
+it('问题资料审计使用实际保存值，补全日期、归属和提报信息并保留显式原因', async () => {
+  let issue = await createIssue('审计资料变更');
+  const created = await post('/api/requirements', { projectId, title: '接口交付', durationDays: 1 });
+  expect(created.statusCode, created.body).toBe(200);
+  const requirement = created.json();
+  const update = async (input: Record<string, unknown>) => {
+    const response = await app.inject({ method: 'PATCH', url: '/api/issues/' + issue.id, headers: { cookie }, payload: { expectedVersion: issue.version, ...input } });
+    expect(response.statusCode, response.body).toBe(200);issue = await getIssue(issue.id);
+    const page = (await app.inject({ url: '/api/audit/search?entityType=issue&action=update&q=' + issue.id, headers: { cookie } })).json();
+    return JSON.parse(page.items[0].summary);
+  };
+  const nextReviewAt = addCalendarDays(today, 3), dueDate = addCalendarDays(today, 5), discovery = addCalendarDays(discoveredAt, 1);
+  const record = await update({ title: '  审计资料变更  ', requirementId: requirement.id, sourceRef: '  CHECK-1  ', reporter: '  提报成员  ', priority: 'P1', discoveredAt: discovery, nextReviewAt, dueDate });
+  expect(issue).toMatchObject({ title: '审计资料变更', sourceRef: 'CHECK-1', reporter: '提报成员', requirementId: requirement.id, nextReviewAt, dueDate, discoveredAt: discovery });
+  for (const fact of ['关联需求：未设置 → 接口交付', '范围标识：未设置 → CHECK-1', '提出人：未设置 → 提报成员', '优先级：P2 → P1', `发现日期：${discoveredAt} → ${discovery}`, `下次核对日期：未设置 → ${nextReviewAt}`, `目标日期：未设置 → ${dueDate}`]) expect(record.reason).toContain(fact);
+  expect(record.reason).not.toContain('名称：');expect(record.reason).not.toContain(requirement.id);expect(record.after.nextReviewAt).toBe(issue.nextReviewAt);expect(issue.updates).toHaveLength(0);
+  const explicit = await update({ nextReviewAt: null, dueDate: null, reason: '计划重新确认后再约定日期' });
+  expect(explicit.reason).toBe('计划重新确认后再约定日期');expect(issue).toMatchObject({ nextReviewAt: null, dueDate: null });
+  expect((await command('REST', issue.id, 'resolve', { expectedVersion: issue.version })).statusCode).toBe(200);issue = await getIssue(issue.id);
+  const corrected = await app.inject({ method: 'PATCH', url: '/api/issues/' + issue.id, headers: { cookie }, payload: { expectedVersion: issue.version, nextReviewAt } });
+  expect(corrected.statusCode, corrected.body).toBe(200);issue = await getIssue(issue.id);
+  expect(issue).toMatchObject({ status: 'resolved', progress: 100 });expect(issue.updates?.[0]).toMatchObject({ eventType: 'correction', content: `下次核对日期：未设置 → ${nextReviewAt}` });
+});
+
 it.each(['REST','MCP'] as const)('%s 问题状态切换无需说明，仍记录完整状态历史',async protocol=>{
  let issue=await createIssue('无说明操作');
  for(const [action,status] of [['defer','deferred'],['resume','in_progress'],['resolve','resolved'],['reopen','in_progress']]){

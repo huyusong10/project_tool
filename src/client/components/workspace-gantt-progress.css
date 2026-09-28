@@ -3,6 +3,7 @@
 /* The capsule ends at the date anchor. It never sticks to the viewport edge. */
 .gantt-progress-end{position:absolute;top:calc(var(--date-actual-top) + var(--gantt-actual-height,16px) * .5);transform:translate(calc(-100% + 22px),-50%);z-index:8;display:flex;justify-content:flex-end;align-items:center;width:max(76px,min(260px,calc(var(--gantt-viewport-width,260px) - 8px),calc(var(--gantt-progress-x) - var(--gantt-viewport-left,0px) + 22px)));container:gantt-progress / inline-size;line-height:24px;color:var(--gantt-running);font-size:11px;white-space:nowrap;pointer-events:none}
 .gantt-progress-end :is(.work-progress-link,.workspace-requirement-progress,.workspace-summary-label,.gantt-progress-button){position:static;display:inline-flex;align-items:center;min-width:0;min-height:24px;height:24px;padding:0;border:0;background:transparent;border-radius:12px;box-shadow:none;font:inherit;line-height:24px;text-decoration:none;color:inherit;cursor:pointer;max-width:100%;pointer-events:auto}
+.workspace-gantt .gantt-progress-end .workspace-row-progress .work-progress-link{padding:0;min-width:0;text-decoration:none}
 .gantt-progress-end button:hover .gantt-progress-text{background:var(--accent-soft);border-color:var(--accent)}
 .gantt-progress-end button:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
 .gantt-progress-end .workspace-row-progress{overflow:visible;width:max-content;max-width:100%}
@@ -26,9 +27,6 @@
  .gantt-progress-value{font-size:11px}
  .gantt-progress-more{padding-left:3px;font-size:9px}
 }
-.workspace-gantt .workspace-latest-milestone{top:calc(var(--date-plan-top) - 5px);z-index:8;width:20px;height:18px;display:grid;place-items:center;border-radius:4px}
-.workspace-gantt .workspace-latest-milestone>i{width:7px;height:7px;box-shadow:0 0 0 2px var(--row-bg)}
-.workspace-gantt .workspace-latest-milestone:hover,.workspace-gantt .workspace-latest-milestone:focus-visible{background:var(--accent-soft);outline:1px solid var(--accent)}
 .workspace-summary-milestones{margin:12px 0;font-size:12px}
 .workspace-summary-milestones summary{cursor:pointer;color:var(--text-secondary)}
 .workspace-summary-milestones p{margin:8px 0;overflow-wrap:anywhere}

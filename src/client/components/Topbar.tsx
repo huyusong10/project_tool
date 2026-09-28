@@ -35,7 +35,7 @@ function ProjectSwitcher({ ready }: { ready: boolean }) {
   const selectable = ready || Boolean(selectedProjectId) || page.phase === 'error' && projects.length > 0;
   const selected = projects.find((project) => project.id === selectedProjectId);
   return <div className="project-switcher">
-    {!selectable ? <span className="project-switcher-empty" aria-label="正在加载项目"><span className="project-dot"/><span className="shell-placeholder project-name-placeholder"/></span> : projects.length ? <>
+    {!selectable ? <span className="project-switcher-empty" aria-label={page.phase === 'error' ? '项目不可用' : '正在加载项目'}><span className="project-dot"/>{page.phase === 'error' ? '项目不可用' : <span className="shell-placeholder project-name-placeholder"/>}</span> : projects.length ? <>
       <button type="button" ref={buttonRef} className="project-switcher-button" aria-haspopup="listbox" aria-expanded={open} onClick={() => setOpen((value) => !value)} onKeyDown={event => {
         if (event.key === 'Escape' && open) { event.preventDefault(); event.stopPropagation(); setOpen(false); }
         if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {

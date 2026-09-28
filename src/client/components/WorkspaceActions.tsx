@@ -49,16 +49,19 @@ export function useWorkspaceActions({data,location,inspect,onImport}:{data:PathA
     </>}
     {editable&&scope.kind!=='requirement'&&<Button variant="secondary" onClick={onImport}>导入需求</Button>}
   </>;
-  const emptyActions=canCreate?<div className="button-row">
+  const emptyActions=valid&&(canCreate||scope.kind==='requirement'&&requirement)?<div className="button-row">
+    {scope.kind==='requirement'&&requirement&&<Button variant="primary" onClick={()=>inspect(requirement.id,'overview')}>查看需求</Button>}
+    {canCreate&&<>
     {scope.kind==='project'&&<Button variant="primary" onClick={()=>setFeatureEdit({mode:'basic'})}>新建特性</Button>}
     {scope.kind==='feature'&&feature?.kind!=='other'&&<Button variant="primary" onClick={newPhase}>新建 Phase</Button>}
     {scope.kind==='requirement'?<Button variant="secondary" onClick={()=>setWorkId(scope.id)}>新建工作项</Button>:<Button variant="secondary" onClick={newRequirement}>新建需求</Button>}
     {feature&&feature.kind!=='other'&&scope.kind!=='requirement'&&<Button variant="secondary" onClick={()=>setPhaseEdit({feature,phase,mode:'placement'})}>移入需求</Button>}
+    </>}
   </div>:null;
   const dialogs=manage?<>
     {featureEdit&&<FeatureEditor projectId={projectId} edit={featureEdit} onClose={()=>setFeatureEdit(null)}/>}
     {phaseEdit&&<PhaseDialog key={(phaseEdit.phase?.id||phaseEdit.feature.id)+phaseEdit.mode} edit={phaseEdit} onClose={()=>setPhaseEdit(null)}/>}
-    {(creating||recheck)&&<RequirementForm projectId={projectId} defaultFeatureId={feature?.id} defaultPhaseId={phase?.id} initialRequirementIds={data.requirements.map(r=>r.id)} recheck={recheck} onRecheckChange={value=>{setRecheck(value);persistRequirementCreateRecheck(account,projectId,value);}} onClose={()=>setCreating(false)}/>}
+    {(creating||recheck)&&<RequirementForm projectId={projectId} defaultFeatureId={feature?.id} defaultPhaseId={phase?.id} initialRequirementIds={data.requirements.map(r=>r.id)} recheck={recheck} onRecheckChange={value=>{setRecheck(value);persistRequirementCreateRecheck(account,projectId,value);}} onClose={()=>setCreating(false)} onCreated={created=>inspect(created.id,'overview')}/>}
     {workId&&<CreateWorkItemDialog requirementId={workId} projectId={projectId} onClose={()=>setWorkId('')} onDetails={()=>{setWorkId('');inspect(workId);}} onInspect={id=>{setWorkId('');inspect(id);}}/>}
   </>:null;
   return {createMenu,moreActions,emptyActions,dialogs,requirementAction,clearRequirementAction:()=>setRequirementAction(null)};

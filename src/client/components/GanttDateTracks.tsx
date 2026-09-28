@@ -39,7 +39,9 @@ export const GanttDateTracks = memo(function GanttDateTracks({
   const inside = progressPlacement === 'inside';
   const labelFits = !inside || visibleActualRight - visibleActualLeft >= labelWidth + 12;
   const labelLeft = inside ? visibleActualRight - labelWidth - 6 : Math.max(4, Math.min(total - labelWidth - 4, progressPlacement==='below'?(actual?.left??endpoint)+4:endpoint+8));
-  const title = `${label}；计划 ${plannedStart || "缺少开始日期"} 至 ${plannedEnd || "缺少结束日期"}；实际 ${actualStart || (["not_started", "planning"].includes(status) ? "未开始" : "缺少开始日期")} 至 ${actualEnd || "结束日期缺失"}${!terminal && actualEnd ? "（截至统计日）" : ""}`;
+  const notStarted = ["not_started", "planning"].includes(status) && !actualStart && !actualEnd;
+  const actualDates = notStarted ? "尚未开始" : `${actualStart || "缺少开始日期"} 至 ${actualEnd || "结束日期缺失"}${!terminal && actualEnd ? "（截至统计日）" : ""}`;
+  const title = `${label}；计划 ${plannedStart || "缺少开始日期"} 至 ${plannedEnd || "缺少结束日期"}；实际 ${actualDates}`;
   const left = Math.min(plan?.left ?? total, actual?.left ?? total);
   const right = Math.max(plan?.right ?? 0, actual?.right ?? 0);
   return <>

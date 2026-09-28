@@ -326,6 +326,10 @@ function migrateAndValidateRestoreCopy(replacement: string) {
     try {
       migrate(drizzle(restoreDb), { migrationsFolder: path.join(getDatabaseContext().config.rootDir, 'drizzle') });
       initializeWorkspaceOrder(restoreDb);
+      if (restoreDb.prepare("SELECT 1 FROM sqlite_schema WHERE name='jira_connections'").get()) {
+        restoreDb.prepare("UPDATE jira_connections SET verified_at=NULL,version=lower(hex(randomblob(16))),problem='数据库已恢复，请重新验证 Jira 连接'").run();
+        restoreDb.prepare("DELETE FROM jira_operations WHERE kind IN ('scan','import','jira_read','refresh','pr_generation')").run();
+      }
     } finally {
       restoreDb.pragma('foreign_keys = ON');
     }

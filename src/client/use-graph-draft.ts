@@ -107,7 +107,14 @@ export function useGraphHistory<T>(key:string,initial:T,version:string,source?:P
       finally{current.loading=false;current.notify();}
     },
     canUndo:state.index>0,canRedo:state.index+1<state.values.length,
-    begin:()=>dispatch({type:'begin'}),endGroup:()=>dispatch({type:'end-group'}),
+    begin:()=>{
+      // A completed save resets before its refreshed objects arrive. Start the
+      // next clean edit from those objects so their fields remain available.
+      if(!current.state.active&&current.state.values.length===1&&!Object.keys(current.state.fields).length&&latest.current.source){
+        if(!dispatch({type:'reset',value:latest.current.initial,version:latest.current.version,server:latest.current.source}))return false;
+      }
+      return dispatch({type:'begin'});
+    },endGroup:()=>dispatch({type:'end-group'}),
     change:(value:T,group?:string)=>dispatch({type:'change',value,group}),
     undo:()=>dispatch({type:'undo'}),redo:()=>dispatch({type:'redo'}),
     reset:(next=latest.current.initial,nextVersion=latest.current.version)=>dispatch({type:'reset',value:next,version:nextVersion,server:latest.current.source}),

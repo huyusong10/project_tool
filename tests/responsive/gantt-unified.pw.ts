@@ -36,7 +36,7 @@ async function expectOnlyBusinessDays(locator: ReturnType<Page["locator"]>) {
   }), "法定调休周末应作为工作日出现在时间轴中").toBe(true);
 }
 
-test("DCIM-34 实际条越过原截止日，里程碑落在执行范围内，进度变化不移动日期", async ({ page }, info) => {
+test("DCIM-34 实际条越过原截止日，不叠加里程碑标记，进度变化不移动日期", async ({ page }, info) => {
   await mockGanttData(page);
   const overdue = { ...requirement, title: 'EPDS-DCIM-34【角色管理】', plannedStart: '2026-08-26', plannedEnd: '2026-09-04',
     actualStart: '2026-08-26', actualEnd: null, observationEnd: '2026-09-11', asOfDate: '2026-09-11',
@@ -54,18 +54,17 @@ test("DCIM-34 实际条越过原截止日，里程碑落在执行范围内，进
   await expect(delay).toHaveCSS('border-top-color', await themeColor(page, '--gantt-delay'));
   await expect(row.locator('.unified-gantt-progress-gap')).toHaveCount(0);
   await expect(row.locator('.gantt-progress-end')).toHaveAttribute('data-anchor-date','2026-09-11');
-  await expect(row.getByRole('button',{name:/最近达成：提测就绪/})).toBeVisible();
+  await expect(row.locator('.workspace-latest-milestone')).toHaveCount(0);
   const geometry = () => row.evaluate(root => {
     const left = (selector: string) => parseFloat(root.querySelector<HTMLElement>(selector)!.style.left);
     const width = parseFloat(root.querySelector<HTMLElement>('.gantt-date-actual')!.style.width);
     return { start: left('.gantt-date-actual'), end: left('.gantt-date-actual') + width,
-      deadline: left('.gantt-date-deadline'), milestone: left('[data-milestone-id="ready"]'),
+      deadline: left('.gantt-date-deadline'),
       marker: left('.gantt-progress-end'), today: left('.gantt-today-line') };
   });
   const original = await geometry();
   expect(original.end).toBe(original.today); expect(original.marker).toBe(original.end);
-  expect(original.milestone).toBeGreaterThan(original.deadline);
-  expect(original.milestone).toBeLessThan(original.end);
+  expect(original.end).toBeGreaterThan(original.deadline);
   await page.locator('.workspace-gantt-scroll').screenshot({ path: info.outputPath('dcim34-actual-dates.png') });
   overdue.progress = 40; await page.reload(); await expect(row.locator('.gantt-progress-end')).toHaveAttribute('data-anchor-date','2026-09-11');
   expect(await geometry()).toEqual(original);
@@ -129,7 +128,7 @@ test("关联工作项的纯说明不显示需求进度或当前工作项进度",
   await page.getByRole('tab',{name:'记录',exact:true}).click();
 
   const history = page.locator('.progress-feed > article').filter({ hasText: note.content });
-  await expect(history.locator('.progress-marker')).toHaveText('—');
+  await expect(history.locator('.progress-marker')).toHaveText('说明');
   await expect(history.locator('.progress-marker')).not.toContainText('61%');
   await expect(history.locator('.progress-marker')).not.toContainText('40%');
 

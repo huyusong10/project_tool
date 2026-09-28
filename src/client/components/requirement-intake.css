@@ -9,6 +9,7 @@
 .workspace-import{scroll-padding-block:16px 112px}
 .intake-import-card .intake-feature-row{display:grid;grid-template-columns:minmax(0,1fr) 160px auto;align-items:end;gap:12px;margin:12px 0;padding:12px 0;border-top:1px solid var(--border-default)}
 .intake-import-card .intake-feature-row>.field{min-width:0;margin:0}
+.intake-import-card .intake-work-plan{grid-column:1/-1;min-width:0}
 @media(max-width:700px){
  .workspace-import{scroll-padding-bottom:144px}
  .intake-import-card .intake-feature-row{grid-template-columns:minmax(0,1fr) auto}

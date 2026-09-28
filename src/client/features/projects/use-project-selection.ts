@@ -33,6 +33,11 @@ export function useProjectSelection(page: ResolvedPageContext, projects: Project
     rememberProject(session.accountId || session.username || 'guest', projectId);
     const params = location.pathname === '/issues' ? new URLSearchParams(location.search) : new URLSearchParams();
     if (location.pathname === '/issues') for (const key of ['issueId','requirementId','ownerId','page','q']) params.delete(key);
+    if (location.pathname === '/analytics') {
+      const current = new URLSearchParams(location.search);
+      params.set('range', current.get('range') || '90');
+      for (const key of ['from', 'to']) if (current.has(key)) params.set(key, current.get(key)!);
+    }
     params.set('projectId',projectId);
     let pathname = projects.find(p => p.id === projectId)?.publicReadOnly ? '/' : location.pathname;
     if (/^\/requirements\/[^/]+$/.test(pathname)) pathname = new URLSearchParams(location.search).get('view') === 'path' ? '/paths' : '/requirements';

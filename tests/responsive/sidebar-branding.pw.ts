@@ -51,6 +51,7 @@ test("折叠侧边栏保留完整导航并共用同一品牌标识", async ({ pa
 
   const sidebar = page.locator(".sidebar");
 
+  await expect.poll(() => sidebar.locator(".sidebar-nav a").count()).toBeGreaterThan(10);
   const linkCount = await sidebar.locator(".sidebar-nav a").count();
   expect(linkCount).toBeGreaterThan(10);
 

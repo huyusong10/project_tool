@@ -15,6 +15,17 @@ test('新增在清单末尾，重复点击聚焦同一行，关闭刷新保留�
   await expect(page.getByRole('dialog')).toHaveCount(1);await expect(name).toBeFocused();
   await expect(root.locator('.work-arrangement-list > :last-child')).toHaveClass(/work-create-row/);
   await name.fill('行内验证');await chooseOption(draft.getByLabel('工作阶段',{exact:true}),'testing');
+  const assigned = await (await page.request.post('/api/people',{data:{projectId:f.projectId,name:'草稿执行人 '+Date.now()}})).json();
+  await page.reload();
+  await draft.getByRole('button',{name:/新工作项主负责人：/}).click();
+  await page.getByRole('option',{name:assigned.name,exact:true}).click();
+  expect(await draft.locator('[aria-label="已保存"]').count()).toBe(0);
+  await draft.getByRole('button',{name:/新工作项协作人员：/}).click();
+  const collaborators=page.locator('.inline-multi-popover');
+  await collaborators.getByRole('checkbox').check();
+  await collaborators.getByRole('button',{name:'完成',exact:true}).click();
+  expect(await draft.locator('[aria-label="已保存"]').count()).toBe(0);
+  await expect(draft).toContainText('未保存');expect(writes).toBe(0);
   await root.getByRole('button',{name:'添加工作项',exact:true}).click();await expect(draft).toHaveCount(1);await expect(name).toBeFocused();await expect(name).toHaveValue('行内验证');
   await root.locator(':scope > header').getByRole('button',{name:'关闭',exact:true}).click();await page.goto(url);await expect(name).toHaveValue('行内验证');await page.reload();await expect(name).toHaveValue('行内验证');expect(writes).toBe(0);
   await draft.getByLabel('计划开始',{exact:true}).fill('2026-09-17');await draft.getByLabel('计划完成',{exact:true}).fill('2026-09-18');
@@ -24,6 +35,13 @@ test('新增在清单末尾，重复点击聚焦同一行，关闭刷新保留�
   await draft.getByRole('button',{name:'保存工作项',exact:true}).evaluate(button=>{(button as HTMLButtonElement).click();(button as HTMLButtonElement).click();});
   await expect(draft).toHaveCount(0);await expect(root.locator('.work-arrangement-row')).toHaveCount(3);expect(writes).toBe(1);
   const latest=await(await page.request.get('/api/requirements/'+f.testing.id)).json();expect(latest.workItems.at(-1)).toMatchObject({title:'行内验证',workStage:'testing',plannedStart:'2026-09-17',plannedEnd:'2026-09-18'});
+  expect(latest.workItems.at(-1).ownerId).toBe(assigned.id);
+  expect(latest.workItems.at(-1).collaborators).toHaveLength(1);
+  await root.getByRole('tab',{name:'记录',exact:true}).click();
+  await expect(root.getByText('新增工作项：行内验证（2人协作）；补充本次范围',{exact:true})).toBeVisible();
+  await page.reload();
+  await expect(root.getByText('新增工作项：行内验证（2人协作）；补充本次范围',{exact:true})).toBeVisible();
+  await root.getByRole('tab',{name:/^工作项 /}).click();
   await root.getByRole('button',{name:'添加工作项',exact:true}).click();await name.fill('放弃这一行');await draft.getByRole('button',{name:'取消',exact:true}).click();await expect(draft).toHaveCount(0);expect(writes).toBe(1);
 });
 
@@ -57,7 +75,7 @@ test('短操作保留详情背景和滚动，关闭恢复焦点，菜单先响�
   await textarea.fill('保留说明');await page.screenshot({path:info.outputPath('compact-completion.png'),animations:'disabled'});
   await page.keyboard.press('Escape');await expect(form).toHaveCount(0);await expect(root).toBeVisible();await expect(trigger).toBeFocused();
   await trigger.click();await expect(textarea).toHaveValue('保留说明');await form.getByRole('button',{name:'取消',exact:true}).click();
-  await row.getByRole('button',{name:'修正实际日期',exact:true}).click();const dates=page.getByRole('dialog',{name:'修正实际日期',exact:true});await expect(dates).toBeVisible();
+  await row.getByRole('button',{name:'修正日期与说明',exact:true}).click();const dates=page.getByRole('dialog',{name:'修正日期与说明',exact:true});await expect(dates).toBeVisible();
   const select=dates.getByLabel('工作项纠错关联历史记录',{exact:true});await select.click();await expect(page.getByRole('listbox')).toBeVisible();await page.keyboard.press('Escape');await expect(page.getByRole('listbox')).toHaveCount(0);await expect(dates).toBeVisible();await page.keyboard.press('Escape');await expect(dates).toHaveCount(0);await expect(root).toBeVisible();
   await trigger.click();await form.getByRole('button',{name:'确认完成',exact:true}).focus();await page.keyboard.press('Tab');await expect(form.getByRole('button',{name:'关闭',exact:true})).toBeFocused();await page.keyboard.press('Escape');
 });

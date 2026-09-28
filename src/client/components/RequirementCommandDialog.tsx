@@ -159,7 +159,7 @@ export function RequirementCommandDialog({ action, requirement, recheck, onReche
         {!!pendingItems.length && <ul className="requirement-command-plan">{pendingItems.map((item) => <li key={item.id}><strong>{item.title}</strong><span>{item.plannedStart || '未排期'} → {item.plannedEnd || '未排期'}</span></li>)}</ul>}
         <p>用于录入过去已经按期交付的需求：一次完成所有未执行工作项。补录说明自动填写，操作会完整保留审计记录。</p>
       </>}
-      {action === 'cancel' && <p>将取消 {pendingItems.length} 个未结束工作项。已完成工作项和历史记录保持不变。</p>}
+      {action === 'cancel' && <><p>取消后不能重新打开此需求。将取消 {pendingItems.length} 个未结束工作项。</p><p>已完成工作项和历史记录保持不变；归档后恢复也会保留已取消状态。</p></>}
       {action === 'archive' && <p>需求将从日常页面隐藏，历史数据仍会保留并可在归档中心恢复。</p>}
       {needsText && <FormField label="取消说明（可选）" full><textarea rows={2} disabled={pending} value={text} onChange={(event) => setText(event.target.value)} /></FormField>}
       <FormError>{mutation.error?.message}</FormError>

@@ -1,6 +1,8 @@
 import {test,expect,type Page} from '@playwright/test';
 import {graphFixture as setup} from './graph-fixture';
 import {openGraph,closeGraphProperties,graphProperties} from './graph-interactions';
+import {chooseOption} from './select-helper';
+import {addBusinessDays,todayIso} from '../../src/shared/domain';
 
 const ready=(page:Page)=>expect(page.locator('.dependency-canvas')).toHaveAttribute('data-layout-ready','true');
 const node=(page:Page,id:string)=>page.locator('.react-flow__node[data-id="'+id+'"]');
@@ -10,17 +12,89 @@ const featureRoot=async(page:Page)=>{await closeGraphProperties(page);await page
 async function enter(page:Page,id:string){await closeGraphProperties(page);await node(page,id).locator('.dependency-card').click();await expect(node(page,id)).toHaveClass(/selected/);await node(page,id).getByRole('button',{name:/^进入/}).click();await ready(page);}
 async function stableViewport(page:Page){let prior='',stable=0;await expect.poll(async()=>{const value=await viewport(page)||'';stable=value===prior?stable+1:0;prior=value;return stable;},{intervals:[100]}).toBeGreaterThanOrEqual(3);return viewport(page);}
 
+test('关闭交付关系后打开需求，仅显示当前需求且刷新不恢复旧关系窗口',async({page})=>{
+ const {project,a,b,analysis}=await setup(page),before=await analysis();
+ await page.goto('/?'+new URLSearchParams({projectId:project.id,workspaceView:'graph',scopeType:'feature',scopeId:a.featureId!}));await ready(page);
+ await page.locator('.react-flow__edge[data-id="'+a.id+'>'+b.id+'"] .dependency-edge-label').click();
+ await expect(page.getByRole('dialog',{name:'关系详情',exact:true})).toBeVisible();
+ await closeGraphProperties(page);await expect(page.getByRole('dialog')).toHaveCount(0);
+ await node(page,b.id).getByRole('button',{name:b.title,exact:true}).click();
+ const detail=page.getByRole('dialog',{name:b.title,exact:true});
+ await expect(detail).toBeVisible();await expect(page.getByRole('dialog')).toHaveCount(1);
+ await expect.poll(()=>new URL(page.url()).searchParams.get('graphInspector')).toBe('closed');
+ await expect(node(page,b.id)).toHaveClass(/selected/);
+ await detail.getByRole('tab',{name:'工作项 2',exact:true}).click();await page.reload();await ready(page);
+ await expect(page.getByRole('dialog')).toHaveCount(1);await expect(detail.getByRole('tab',{name:'工作项 2',exact:true})).toHaveAttribute('aria-selected','true');
+ await detail.getByRole('button',{name:'关闭',exact:true}).click();await expect(page.getByRole('dialog')).toHaveCount(0);
+ expect(await analysis()).toEqual(before);
+});
+
+test('概览阻塞直达来源工作，跨需求影响、筛选恢复与刷新保持可追溯',async({page})=>{
+ const {project,a,b,analysis}=await setup(page),work=a.workItems[0];
+ const response=await page.request.patch('/api/work-items/'+work.id,{data:{expectedVersion:work.version,workStage:'development',plannedStart:addBusinessDays(todayIso(),-3),plannedEnd:addBusinessDays(todayIso(),-2)}});
+ expect(response.ok(),await response.text()).toBe(true);
+ const before=await analysis(),writes:string[]=[];
+ expect(before.blockers.find(item=>item.nodeId===work.id)?.affectedRequirementIds).toContain(b.id);
+ page.on('request',request=>{if(request.url().includes('/api/')&&!['GET','HEAD'].includes(request.method()))writes.push(request.method()+' '+new URL(request.url()).pathname);});
+ const entry=(scopeType:string,scopeId:string,workspaceView='list')=>'/?'+new URLSearchParams({projectId:project.id,scopeType,scopeId,workspaceView});
+ const locate=async(affectedTitle=b.title)=>{
+  await page.getByRole('button',{name:'展开概览',exact:true}).click();
+  const blocker=page.getByRole('region',{name:'主要阻塞',exact:true}).getByRole('article').filter({has:page.getByRole('button',{name:a.title+' / '+work.title,exact:true})});
+  await blocker.locator('summary').click();
+  await expect(blocker.getByRole('button',{name:affectedTitle,exact:true})).toBeVisible();
+  await blocker.getByRole('button',{name:'定位关系图',exact:true}).click();await ready(page);
+  await expect.poll(()=>new URL(page.url()).searchParams.get('scopeId')).toBe(a.id);
+  await expect(node(page,work.id)).toHaveClass(/selected/);await expect(node(page,work.id)).toBeInViewport();
+ };
+ await page.goto(entry('project',project.id));await locate();
+ await page.reload();await ready(page);await expect(node(page,work.id)).toHaveClass(/selected/);
+ await page.goBack();await expect.poll(()=>new URL(page.url()).searchParams.get('scopeType')).toBe('project');
+ // The affected requirement may be elsewhere in the hierarchy; the source still opens in its own graph.
+ await page.goto(entry('requirement',b.id));await locate();
+ await chooseOption(page.getByRole('combobox',{name:'工作阶段筛选',exact:true}),'testing');
+ await expect(node(page,work.id)).toBeHidden();
+ await page.getByRole('button',{name:'清单',exact:true}).click();await locate(a.title);
+ await expect(page.getByRole('combobox',{name:'工作阶段筛选',exact:true})).toContainText('全部工作阶段');
+ await page.setViewportSize({width:390,height:844});await page.reload();await ready(page);
+ await expect(node(page,work.id)).toBeInViewport();
+ await node(page,work.id).getByRole('button',{name:work.title,exact:true}).click();
+ const details=page.getByRole('dialog',{name:work.title,exact:true});await details.getByRole('tab',{name:'依赖',exact:true}).click();
+ await expect(details).toContainText(b.title);
+ expect(writes).toEqual([]);expect(await analysis()).toEqual(before);
+});
+
 test('不同范围的详情进入所属需求关系图，浏览器返回恢复入口',async({page})=>{
  const {project,a,analysis}=await setup(page),before=await analysis(),writes:string[]=[];
  page.on('request',request=>{if(request.url().includes('/api/')&&!['GET','HEAD'].includes(request.method()))writes.push(request.method()+' '+new URL(request.url()).pathname);});
  const detail=(scopeType:string,scopeId:string,view:string,id:string)=>'/?'+new URLSearchParams({projectId:project.id,workspaceView:view,scopeType,scopeId,detailId:id,detailTab:'dependencies'});
- const entries=[['/requirements/'+a.id,a.id],[detail('project',project.id,'progress',a.id),a.id],[detail('project',project.id,'list',a.workItems[0].id),a.workItems[0].id],[detail('feature',a.featureId!,'progress',a.workItems[0].id),a.workItems[0].id],[detail('feature',a.featureId!,'list',a.id),a.id]];
+ const entries=[['/requirements/'+a.id,a.id],[detail('project',project.id,'progress',a.id),a.id],[detail('project',project.id,'list',a.workItems[0].id)+'&workStage=testing&pathStatuses=completed&pathCritical=1&pathBranch='+a.workItems[1].id,a.workItems[0].id],[detail('feature',a.featureId!,'progress',a.workItems[0].id),a.workItems[0].id],[detail('feature',a.featureId!,'list',a.id),a.id]];
  for(const [url,id] of entries){
   await page.goto(url);const modal=page.locator('.modal-card-workspace[role=dialog]');await modal.getByRole('tab',{name:'依赖',exact:true}).click();const originalUrl=page.url();
   await modal.getByRole('button',{name:/^在关系图中/}).click();await ready(page);await expect(page).toHaveURL(new RegExp('scopeType=requirement&scopeId='+a.id));await expect(node(page,a.workItems[0].id)).toBeVisible();
   if(id!==a.id)await expect(node(page,id)).toHaveClass(/selected/);
   await page.goBack();await expect(page).toHaveURL(originalUrl);await expect(modal.getByRole('tab',{name:'依赖',exact:true})).toHaveAttribute('aria-selected','true');
   await page.goForward();await ready(page);await expect(page).toHaveURL(new RegExp('scopeId='+a.id));await page.goBack();await expect(page).toHaveURL(originalUrl);await expect(modal).toBeVisible();
+ }
+ expect(writes).toEqual([]);expect(await analysis()).toEqual(before);
+});
+
+test('特性规划连线不会随工期入口进入需求图并遮挡工作详情',async({page})=>{
+ const {project,a,analysis}=await setup(page),base='/api/projects/'+project.id;
+ const createFeature=async(name:string)=>(await(await page.request.post(base+'/features',{data:{name,sortOrder:0}})).json()).features.find((f:{name:string})=>f.name===name);
+ const source=await createFeature('业务输入'),target=await createFeature('业务使用');
+ expect((await page.request.post(base+'/feature-relations',{data:{sourceFeatureId:source.id,targetFeatureId:target.id,note:'规划评审用'}})).ok()).toBe(true);
+ const before=await analysis(),writes:string[]=[];
+ page.on('request',r=>{if(r.url().includes('/api/')&&!['GET','HEAD'].includes(r.method()))writes.push(r.method()+' '+new URL(r.url()).pathname);});
+ await page.goto('/?'+new URLSearchParams({projectId:project.id,workspaceView:'graph',scopeType:'project',scopeId:project.id}));await ready(page);
+ await page.locator('.react-flow__edge .dependency-edge-label').filter({hasText:'规划'}).click();await closeGraphProperties(page);
+ await page.getByRole('button',{name:'清单',exact:true}).click();await page.getByRole('button',{name:'展开全部',exact:true}).click();
+ await page.getByRole('button',{name:a.title,exact:true}).click();
+ const requirement=page.getByRole('dialog',{name:a.title,exact:true});await requirement.getByRole('tab',{name:'工作项 2',exact:true}).click();await requirement.getByRole('button',{name:'前置关系与工期',exact:true}).click();await ready(page);
+ for(const work of a.workItems){
+  await node(page,work.id).getByRole('button',{name:work.title,exact:true}).click();
+  await expect(page.getByRole('dialog')).toHaveCount(1);await expect(page.getByRole('dialog',{name:work.title,exact:true})).toBeVisible();
+  await expect.poll(()=>new URL(page.url()).searchParams.get('pathEdge')||'').toBe('');
+  await page.reload();await ready(page);await expect(page.getByRole('dialog')).toHaveCount(1);await closeGraphProperties(page);
  }
  expect(writes).toEqual([]);expect(await analysis()).toEqual(before);
 });

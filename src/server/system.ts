@@ -1,4 +1,4 @@
-import { moduleLogger } from '../../scripts/runtime-logger.mjs';
+import { getRuntimeLogger, moduleLogger } from '../../scripts/runtime-logger.mjs';
 import fs from 'node:fs';
 
 import { getDatabaseContext } from './database-context';
@@ -24,6 +24,7 @@ function nextBackupAt(now = new Date()) {
 }
 
 export function getSystemOverview() {
+  const logging = getRuntimeLogger().settings;
   const backups = listRestorableBackups();
   const restorableBackups = backups.filter((backup) => backup.restorable);
   const lastBackupAt = restorableBackups[0]?.createdAt ?? null;
@@ -54,6 +55,10 @@ export function getSystemOverview() {
       totalSizeBytes: mainSizeBytes + walSizeBytes + shmSizeBytes,
       journalMode,
       importMaxBytes: getDatabaseContext().config.databaseImportMaxBytes,
+    },
+    logging: {
+      level: logging.level,
+      directory: logging.fileEnabled ? logging.directory : null,
     },
     backups: {
       count: backups.length,

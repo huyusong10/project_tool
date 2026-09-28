@@ -32,6 +32,72 @@ async function saveImport(page:Page) {
   await expect(page.getByText('已保存 1 个需求',{exact:true})).toBeVisible();
 }
 
+test.describe('大批次合并选择',()=>{
+ test.use({hasTouch:true});
+ test('300条草稿按需展开原生合并框，触摸和键盘选择后保存正确结果',async({page},info)=>{
+  const projectId=await fixture(page),titles=page.getByLabel('导入需求标题'),merge=page.getByRole('button',{name:'合并需求',exact:true}),choice=page.getByLabel('合并需求到');
+  await page.getByRole('button',{name:'编辑导入文件',exact:true}).click();
+  await page.getByLabel('原始需求',{exact:true}).fill(Array.from({length:300},(_,i)=>`批次资料 ${i+1}\n原始核对说明 ${i+1}`).join('\n\n'));
+  await page.getByRole('button',{name:'整理需求',exact:true}).click();await expect(titles).toHaveCount(300);await expect(choice).toHaveCount(0);
+  await titles.first().fill('批次资料 1 · 修订');
+  await merge.first().tap();await expect(choice).toHaveCount(1);
+  await merge.nth(1).tap();await expect(choice).toHaveCount(1);await expect(merge.first()).toHaveAttribute('aria-expanded','false');
+  await expect(choice.locator('option')).toHaveCount(300);await expect(choice.locator('option').nth(1)).toHaveText('批次资料 1 · 修订');
+  await choice.tap();await expect.poll(()=>choice.evaluate(select=>select.matches(':open'))).toBe(true);
+  await page.keyboard.press('Escape');await expect(titles).toHaveCount(300);
+  await merge.nth(1).press('Enter');await expect(choice).toHaveCount(0);await merge.nth(1).press('Enter');await expect(choice).toHaveCount(1);
+  await choice.press('Space');await expect.poll(()=>choice.evaluate(select=>select.matches(':open'))).toBe(true);
+  await page.keyboard.press('ArrowDown');await page.keyboard.press('Enter');await expect(titles).toHaveCount(299);await expect(choice).toHaveCount(0);
+  await page.reload();await expect(titles).toHaveCount(299);await expect(titles.first()).toHaveValue('批次资料 1 · 修订');
+  await expect(page.getByLabel('导入需求原文').first()).toHaveValue('批次资料 1\n原始核对说明 1\n批次资料 2\n原始核对说明 2');
+  await page.getByRole('button',{name:'预览导入',exact:true}).click();await expect(page.locator('.intake-preview-result')).toContainText('新增 299 个需求');
+  await page.getByRole('button',{name:'保存需求',exact:true}).click();await expect(page.getByText('已保存 299 个需求',{exact:true})).toBeVisible();
+  const saved=await(await page.request.get('/api/requirements?projectId='+projectId)).json();expect(saved).toHaveLength(299);
+  expect(saved.find((r:{title:string})=>r.title==='批次资料 1 · 修订')).toMatchObject({background:'批次资料 1\n原始核对说明 1\n批次资料 2\n原始核对说明 2',status:'not_started',progress:0});
+  await page.getByRole('link',{name:'批次资料 1 · 修订',exact:true}).click();await expect(page.getByRole('heading',{name:'批次资料 1 · 修订',exact:true})).toBeVisible();
+  await page.goBack();await page.reload();await expect(page.getByText('已保存 299 个需求',{exact:true})).toBeVisible();await expect(titles.first()).toBeDisabled();
+  await page.screenshot({path:info.outputPath('intake-large-saved.png')});
+ });
+});
+
+test('导入时排工作日期，刷新草稿与保存详情保留相同计划',async({page})=>{
+  const id=await fixture(page);let writes=0;page.on('request',request=>{if(request.method()==='POST'&&request.url().endsWith('/requirement-import/apply'))writes++;});
+  const work=page.locator('.intake-import-card details').first();
+  await work.locator('summary').click();
+  const starts=page.getByLabel('导入工作项计划开始'),ends=page.getByLabel('导入工作项计划完成');
+  await expect(starts).toHaveCount(2);
+  await starts.first().fill('2026-09-28');await ends.first().fill('2026-09-29');
+  await starts.last().fill('2026-09-30');await ends.last().fill('2026-09-29');
+  await page.getByRole('button',{name:'预览导入',exact:true}).click();
+  await expect(page.getByRole('button',{name:'保存需求',exact:true})).toBeDisabled();
+  await expect(page.locator('.intake-preview-result')).toContainText('查询页面与联调');
+  await ends.last().fill('2026-09-30');
+  await work.locator('summary').click();await page.reload();await work.locator('summary').click();
+  await expect(starts.first()).toHaveValue('2026-09-28');await expect(ends.last()).toHaveValue('2026-09-30');
+  await page.getByRole('button',{name:'预览导入',exact:true}).click();
+  await expect(page.locator('.intake-preview-result')).not.toContainText('计划日期尚未补齐');
+  await ends.first().fill('2026-09-28');
+  await expect(page.getByRole('button',{name:'保存需求',exact:true})).toBeDisabled();
+  const applied=page.waitForResponse(r=>r.request().method()==='POST'&&r.url().endsWith('/requirement-import/apply'));
+  await saveImport(page);const response=await applied;expect(response.status()).toBe(200);
+  const receipt=await response.json(),detail=(await page.request.get('/api/requirements/'+receipt.requirementIds.query));
+  expect(await detail.json()).toMatchObject({plannedStart:'2026-09-28',plannedEnd:'2026-09-30',workItems:expect.arrayContaining([
+    expect.objectContaining({title:'查询接口',plannedStart:'2026-09-28',plannedEnd:'2026-09-28'}),
+    expect.objectContaining({title:'查询页面与联调',plannedStart:'2026-09-30',plannedEnd:'2026-09-30'}),
+  ])});
+  await page.getByRole('link',{name:'查询与详情',exact:true}).click();
+  await expect(page.getByRole('heading',{name:'查询与详情',exact:true})).toBeVisible();
+  await expect(page.getByRole('dialog')).toContainText('2026-09-28');
+  await expect(page.getByRole('dialog')).toContainText('2026-09-30');
+  await page.reload();await expect(page.getByRole('dialog')).toContainText('2026-09-30');
+  await page.goBack();await expect(page.getByText('已保存 1 个需求',{exact:true})).toBeVisible();
+  await page.reload();await expect(page.getByText('已保存 1 个需求',{exact:true})).toBeVisible();
+  await expect(page.getByLabel('导入需求标题')).toBeDisabled();await expect(page.getByRole('button',{name:'预览导入',exact:true})).toBeDisabled();
+  expect(writes).toBe(1);expect((await(await page.request.get('/api/requirements?projectId='+id)).json()).length).toBe(1);
+  await page.getByRole('button',{name:'继续导入',exact:true}).click();await page.reload();
+  await expect(page.getByText('已保存 1 个需求',{exact:true})).toHaveCount(0);await expect(page.getByLabel('原始需求',{exact:true})).toHaveValue('');
+});
+
 test('导出草稿保留未整理的最新输入，存储失败仍能备份并重新上传',async({page})=>{
   await fixture(page);
   const blockStorage=()=>{
@@ -141,7 +207,7 @@ test('导入工作项收起和重载后保留编辑，可拆分合并并进入�
  await work.locator('summary').click();await expect(titles.first()).toHaveValue('收起后保留的工作项');
  await page.reload();await expect(titles).toHaveCount(0);await work.locator('summary').click();await expect(titles.first()).toHaveValue('收起后保留的工作项');
  await page.getByRole('button',{name:'拆分需求',exact:true}).click();await expect(page.getByLabel('导入需求标题')).toHaveCount(2);
- await chooseOption(page.getByLabel('合并需求到').last(),{label:'查询与详情'});await expect(page.getByLabel('导入需求标题')).toHaveCount(1);
+ await page.getByRole('button',{name:'合并需求',exact:true}).last().click();await chooseOption(page.getByLabel('合并需求到'),{label:'查询与详情'});await expect(page.getByLabel('导入需求标题')).toHaveCount(1);
  await page.getByLabel('导入需求标题').fill('查询需求浏览器验证');await saveImport(page);await returnToList(page);
  await expect(page.locator('.outline-table')).toContainText('示例模块');
  await expect(page.locator('.outline-title',{hasText:'查询需求浏览器验证'})).toBeVisible();
@@ -164,7 +230,7 @@ for(const targetLinks of [1,20])test(`合并导入保留来源链接和工作依
  ],dependencies:[{source:{requirement:'target',workItem:'work'},target:{requirement:'source',workItem:'work'}}]};
  await page.getByRole('button',{name:'编辑导入文件',exact:true}).click();await page.getByLabel('原始需求',{exact:true}).fill(JSON.stringify(pkg));
  await page.getByRole('button',{name:'整理需求',exact:true}).click();await expect(page.getByLabel('导入需求标题')).toHaveCount(2);
- await chooseOption(page.getByLabel('合并需求到').last(),'target');await expect(page.getByLabel('导入需求标题')).toHaveCount(1);
+ await page.getByRole('button',{name:'合并需求',exact:true}).last().click();await chooseOption(page.getByLabel('合并需求到'),'target');await expect(page.getByLabel('导入需求标题')).toHaveCount(1);
  const linkFields=page.locator('.reference-link-row');await expect(linkFields).toHaveCount(targetLinks+1);
  await expect(page.getByLabel(`链接 ${targetLinks+1} 名称`,{exact:true})).toHaveValue(sourceLink.title);
  if(targetLinks===20){
@@ -194,6 +260,7 @@ test('预览失败保留调整，未知提交刷新后查询原回执且不重�
   await page.getByRole('button',{name:'保存需求',exact:true}).click();await expect(page.getByRole('button',{name:'查询提交回执'})).toBeVisible();
   await page.reload();await page.getByRole('button',{name:'查询提交回执'}).click();await expect(page.getByText('已保存 1 个需求',{exact:true})).toBeVisible();expect(writes).toBe(1);
   expect((await(await page.request.get('/api/requirements?projectId='+id)).json()).length).toBe(1);
+  await page.reload();await expect(page.getByText('已保存 1 个需求',{exact:true})).toBeVisible();await expect(page.getByLabel('导入需求标题')).toBeDisabled();expect(writes).toBe(1);
 });
 
 test('需求导入待核对后，已打开标签复用原批次',async({page,context})=>{
@@ -212,18 +279,26 @@ test('需求导入原批次在另一标签完成后，当前页退出待核对�
   await page.getByRole('button',{name:'保存需求',exact:true}).click();await expect(page.getByRole('button',{name:'查询提交回执',exact:true})).toBeVisible();await expect(tab.getByRole('button',{name:'查询提交回执',exact:true})).toBeVisible();
   await page.evaluate(id=>{const key=Object.keys(localStorage).find(value=>value.startsWith('pm-intake:')&&value.endsWith(':'+id))!,saved=JSON.parse(localStorage.getItem(key)!);localStorage.setItem(key,JSON.stringify({...saved,attempt:null,closedBatchId:null}));},id);await expect(tab.getByRole('button',{name:'查询提交回执',exact:true})).toBeVisible();
   await page.unroute(endpoint);await page.getByRole('button',{name:'按原批次重试',exact:true}).click();await expect(page.getByText('已保存 1 个需求',{exact:true})).toBeVisible();
-  await expect(tab.getByRole('button',{name:'查询提交回执',exact:true})).toHaveCount(0);await expect(tab.getByRole('alert')).toContainText('原待核对批次已在其他页面处理');
+  await expect(tab.getByRole('button',{name:'查询提交回执',exact:true})).toHaveCount(0);await expect(tab.getByText('已保存 1 个需求',{exact:true})).toBeVisible();await expect(tab.getByLabel('导入需求标题')).toBeDisabled();
+  await tab.reload();await expect(tab.getByText('已保存 1 个需求',{exact:true})).toBeVisible();await expect(tab.getByRole('link',{name:'查询与详情',exact:true})).toBeVisible();
   expect((await(await page.request.get('/api/requirements?projectId='+id)).json()).length).toBe(1);await tab.close();
 });
 
-test('需求导入跨页通知延迟时，保存前读取原批次',async({page,context})=>{
+for(const outcome of ['pending','applied'] as const)test('需求导入跨页通知延迟时，保存前读取原批次：'+outcome,async({page,context})=>{
   const id=await fixture(page);await page.getByRole('button',{name:'预览导入',exact:true}).click();await expect(page.getByRole('button',{name:'保存需求',exact:true})).toBeEnabled();
   const tab=await context.newPage();await tab.addInitScript(()=>{const target=window as unknown as {addEventListener:(...args:unknown[])=>void},add=target.addEventListener.bind(window);target.addEventListener=(...args:unknown[])=>{if(args[0]!=='storage')add(...args);};});await tab.goto('/requirements?intakeView=import');await expect(tab.getByLabel('导入需求标题')).toHaveValue('查询与详情');await tab.getByRole('button',{name:'预览导入',exact:true}).click();await expect(tab.getByRole('button',{name:'保存需求',exact:true})).toBeEnabled();
-  let originalBatch='';await page.route('**/api/projects/'+id+'/requirement-import/apply',async route=>{originalBatch=route.request().postDataJSON().batchId;await route.abort('connectionfailed');});
-  await page.getByRole('button',{name:'保存需求',exact:true}).click();await expect.poll(()=>originalBatch).not.toBe('');await expect(page.getByRole('button',{name:'查询提交回执',exact:true})).toBeVisible();
+  let originalBatch='';await page.route('**/api/projects/'+id+'/requirement-import/apply',async route=>{originalBatch=route.request().postDataJSON().batchId;if(outcome==='pending')await route.abort('connectionfailed');else await route.continue();});
+  await page.getByRole('button',{name:'保存需求',exact:true}).click();await expect.poll(()=>originalBatch).not.toBe('');
+  if(outcome==='pending')await expect(page.getByRole('button',{name:'查询提交回执',exact:true})).toBeVisible();else await expect(page.getByText('已保存 1 个需求',{exact:true})).toBeVisible();
   const retried:string[]=[];await tab.route('**/api/projects/'+id+'/requirement-import/apply',async route=>{retried.push(route.request().postDataJSON().batchId);await route.abort('connectionfailed');});
-  await tab.getByRole('button',{name:'保存需求',exact:true}).click();await expect(tab.getByRole('button',{name:'查询提交回执',exact:true})).toBeVisible();expect(retried).toEqual([]);
-  await tab.getByRole('button',{name:'按原批次重试',exact:true}).click();await expect.poll(()=>retried.length).toBe(1);expect(retried).toEqual([originalBatch]);await tab.close();
+  await tab.getByRole('button',{name:'保存需求',exact:true}).click();expect(retried).toEqual([]);
+  if(outcome==='pending'){
+    await expect(tab.getByRole('button',{name:'查询提交回执',exact:true})).toBeVisible();await tab.getByRole('button',{name:'按原批次重试',exact:true}).click();await expect.poll(()=>retried.length).toBe(1);expect(retried).toEqual([originalBatch]);
+  }else{
+    await expect(tab.getByText('已保存 1 个需求',{exact:true})).toBeVisible();await expect(tab.getByLabel('导入需求标题')).toBeDisabled();expect(retried).toEqual([]);
+    expect((await(await page.request.get('/api/requirements?projectId='+id)).json()).length).toBe(1);
+  }
+  await tab.close();
 });
 
 test('特性和需求归属表单在矩阵与窄屏中可操作且不横向溢出',{tag:'@responsive'},async({page},info)=>{

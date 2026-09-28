@@ -26,7 +26,7 @@ for(const replacement of ['new-file','manual-text','new-file-after-invalid','oth
       await tab.getByRole('button',{name:'预览导入',exact:true}).click();await expect(tab.getByRole('button',{name:'保存需求',exact:true})).toBeEnabled();
       await tab.route('**/requirement-import/apply',async route=>{await pending;await route.continue();});
       await tab.getByRole('button',{name:'保存需求',exact:true}).click();await expect(page.getByRole('button',{name:'查询提交回执',exact:true})).toBeVisible();
-      releaseApply();await expect(tab.getByText('已保存 1 个需求',{exact:true})).toBeVisible();await expect(page.getByRole('alert')).toContainText('原待核对批次已在其他页面处理');
+      releaseApply();await expect(tab.getByText('已保存 1 个需求',{exact:true})).toBeVisible();await expect(page.getByText('已保存 1 个需求',{exact:true})).toBeVisible();
     }finally{releaseApply();await tab.close();}
   }
   else if(replacement==='manual-text')await raw.fill(latest);
@@ -34,7 +34,7 @@ for(const replacement of ['new-file','manual-text','new-file-after-invalid','oth
   await page.evaluate(async()=>{const target=window as unknown as DeferredFile;target.releaseFileRead();await target.fileRead;await new Promise<void>(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>resolve())));});
   if(replacement==='manual-text'){await expect(raw).toHaveValue(latest);await expect(title).toHaveCount(0);await page.getByRole('button',{name:'整理需求',exact:true}).click();}
   await expect(title).toHaveValue('最新的需求');await expect(page.getByLabel('导入需求原文')).toHaveValue(latest);
-  if(replacement==='other-tab'){await expect(page.getByRole('alert')).toContainText('原待核对批次已在其他页面处理');await page.reload();await expect(title).toHaveValue('最新的需求');const items=await(await page.request.get('/api/requirements?projectId='+project.id)).json();expect(items).toHaveLength(1);expect(items[0].title).toBe('最新的需求');return;}
+  if(replacement==='other-tab'){await expect(page.getByText('已保存 1 个需求',{exact:true})).toBeVisible();await expect(title).toBeDisabled();await page.reload();await expect(title).toHaveValue('最新的需求');await expect(page.getByText('已保存 1 个需求',{exact:true})).toBeVisible();const items=await(await page.request.get('/api/requirements?projectId='+project.id)).json();expect(items).toHaveLength(1);expect(items[0].title).toBe('最新的需求');return;}
   await expect(page.getByRole('alert')).toHaveCount(0);
   await page.reload();await expect(title).toHaveValue('最新的需求');await page.getByRole('button',{name:'预览导入',exact:true}).click();await expect(page.getByRole('button',{name:'保存需求',exact:true})).toBeEnabled();
   expect(await(await page.request.get('/api/requirements?projectId='+project.id)).json()).toEqual([]);

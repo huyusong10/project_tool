@@ -16,6 +16,7 @@ import { registerArchivesRoutes } from './http/archives';
 import { registerTokensRoutes } from './http/tokens';
 import { registerAdminRoutes } from './http/admin';
 import { registerAuditRoutes } from './http/audit';
+import { registerJiraRoutes } from './http/jira';
 
 export function registerApiRoutes(app: FastifyInstance) {
   registerIntakeRoutes(app,requireReady);
@@ -34,4 +35,5 @@ export function registerApiRoutes(app: FastifyInstance) {
   registerTokensRoutes(app);
   registerAdminRoutes(app);
   registerAuditRoutes(app);
+  registerJiraRoutes(app);
 }

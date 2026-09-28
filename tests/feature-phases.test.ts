@@ -40,6 +40,30 @@ it('Phase 自动汇总需求；空和全部取消保持待规划，归档完成�
   const empty=await f.create('远期探索');expect((await f.command(empty.id,'delete')).statusCode).toBe(200);
   const pending=await f.create('未开始');await f.requirement(pending.id);expect((await f.phase(pending.id)).status).toBe('not_started');
 });
+it('工作完成和重开后，项目空间与 Phase 接口保留同一实际执行日期', async () => {
+  const f=await fixture(),phase=await f.create('收尾核验');
+  const post=async(url:string,payload:unknown)=>{const response=await req('POST',url,payload);expect(response.statusCode,response.body).toBe(200);return response.json();};
+  const owner=await post('/api/people',{projectId:f.projectId,name:'收尾负责人'});
+  const template=await post('/api/templates',{projectId:f.projectId,name:'收尾流程',items:[{title:'核验',durationDays:1,startOffsetDays:0,sortOrder:0}]});
+  const requirement=await post('/api/requirements',{projectId:f.projectId,featureId:f.f.id,phaseId:phase.id,ownerId:owner.id,title:'收尾需求',templateId:template.id,plannedStart:'2026-09-10'});
+  let work=await post('/api/work-items/'+requirement.workItems[0].id+'/start',{expectedVersion:requirement.workItems[0].version,expectedRequirementVersion:requirement.version,ownerId:owner.id});
+  work=await post('/api/work-items/'+work.id+'/complete',{expectedVersion:work.version,content:'完成核验'});
+  work=await post('/api/work-items/'+work.id+'/correct',{expectedVersion:work.version,actualStart:'2026-09-10',actualEnd:'2026-09-11',reason:'核对执行日期'});
+  const projected=async()=>{
+    const response=await req('GET',f.base+'/path-graph?view=feature&featureId='+f.f.id);
+    expect(response.statusCode,response.body).toBe(200);
+    const analysis=response.json().analysis,formal=await f.phase(phase.id);
+    expect(analysis.requirements.find((item:{id:string})=>item.id===requirement.id)).toMatchObject({actualStart:formal.actualStart,actualEnd:formal.completedAt});
+    return analysis.featureContext.overview.features.flatMap((item:{phases:FeaturePhase[]})=>item.phases).find((item:FeaturePhase)=>item.id===phase.id) as FeaturePhase;
+  };
+  const completed=await f.phase(phase.id);
+  expect(completed).toMatchObject({status:'completed',actualStart:'2026-09-10',completedAt:'2026-09-11'});
+  expect(await projected()).toMatchObject({status:completed.status,actualStart:completed.actualStart,completedAt:completed.completedAt,observationEnd:completed.observationEnd});
+  await post('/api/work-items/'+work.id+'/reopen',{expectedVersion:work.version,reason:'补充收尾核验'});
+  const reopened=await f.phase(phase.id);
+  expect(reopened).toMatchObject({status:'in_progress',actualStart:'2026-09-10',completedAt:null});
+  expect(await projected()).toMatchObject({status:reopened.status,actualStart:reopened.actualStart,completedAt:null,observationEnd:reopened.observationEnd});
+});
 it('Phase 日期可由界面回显；零年份和无效闰日不产生记录', async () => {
   const f=await fixture(),url=f.base+'/features/'+f.f.id+'/phases';
   for(const targetDate of ['0001-01-01','0096-02-29','0099-12-31','0100-01-01','9999-12-31']){
@@ -66,6 +90,35 @@ it('推进后范围、日期和移入移出需要原因；批量版本冲突回�
   expect((await f.phase(a.id)).status).toBe('completed'); expect((await f.phase(b.id)).status).toBe('in_progress');
   expect((await f.phase(a.id)).completedAt).toBe('2026-09-11');
 });
+it('已推进 Phase 新建需求的安排原因可从创建审计检索，正倒排与未排期均保留', async () => {
+  const f=await fixture(),phase=await f.create('范围核对');
+  await f.requirement(phase.id,'in_progress');
+  const templateResponse=await req('POST','/api/templates',{projectId:f.projectId,name:'范围核对流程',items:[{title:'核对资料',durationDays:2,startOffsetDays:0,sortOrder:0}]});
+  expect(templateResponse.statusCode,templateResponse.body).toBe(200);
+  const templateId=templateResponse.json().id;
+  for(const [name,fields] of [
+    ['直接执行',{plannedStart:'2026-09-10',plannedEnd:'2026-09-11'}],
+    ['流程未排期',{templateId}],
+    ['流程正排',{templateId,plannedStart:'2026-09-10'}],
+    ['流程倒排',{templateId,plannedEnd:'2026-09-11'}],
+  ] as const) {
+    const payload={projectId:f.projectId,featureId:f.f.id,phaseId:phase.id,title:name+'范围补充',...fields};
+    const before=await f.phase(phase.id);
+    const rejected=await req('POST','/api/requirements',payload);expect(rejected.statusCode,rejected.body).toBe(400);
+    expect(await f.phase(phase.id)).toEqual(before);
+    const reason=name+'：新增异常输入核对，保持原交付目标。';
+    const created=await req('POST','/api/requirements',{...payload,reason});expect(created.statusCode,created.body).toBe(200);
+    const requirement=created.json();expect(requirement).toMatchObject({featureId:f.f.id,phaseId:phase.id,status:'not_started',progress:0});
+    const audit=await req('GET','/api/audit/search?'+new URLSearchParams({projectId:f.projectId,q:reason,action:'create',entityType:'requirement'}));
+    expect(audit.statusCode,audit.body).toBe(200);expect(audit.json().total).toBe(1);
+    expect(audit.json().items[0]).toMatchObject({entityId:requirement.id,projectId:f.projectId,actorType:'user'});
+    expect(audit.json().items[0].summary).toContain(reason);expect(audit.json().items[0].summary).toContain(phase.id);expect(audit.json().items[0].summary).toContain(f.f.id);
+    if(name==='流程未排期')expect(requirement).toMatchObject({plannedStart:null,plannedEnd:null});
+    else expect(requirement).toMatchObject({plannedStart:'2026-09-10',plannedEnd:'2026-09-11'});
+    expect((await req('GET','/api/requirements/'+requirement.id)).json()).toEqual(requirement);
+  }
+});
+
 it('历史交付记录不锁定 Phase，需求重开、完成及移入自动刷新状态', async () => {
   const f=await fixture(),a=await f.create('Phase 1'),r=await f.requirement(a.id,'completed');
   const {sqlite}=await import('./support/database');
@@ -116,8 +169,13 @@ it.each([
 
 it('记录提测是人工事实，重复记录受保护，路径、列表和 Phase 使用同一摘要', async () => {
   const f = await fixture(), a = await f.create('Phase 1'), r = await f.requirement(a.id, 'in_progress');
-  const result = await req('POST', f.base + '/requirements/' + r.id + '/test-submission', { expectedVersion: r.version, actualDate: '2026-09-12' }); expect(result.statusCode, result.body).toBe(200); expect(result.json().executionStage).toMatchObject({ key: 'test_submitted', label: '已提测' });
+  const result = await req('POST', f.base + '/requirements/' + r.id + '/test-submission', { expectedVersion: r.version, actualDate: '2026-09-12', content: '测试环境已部署，剩余异常响应场景待验证。' }); expect(result.statusCode, result.body).toBe(200); expect(result.json().executionStage).toMatchObject({ key: 'test_submitted', label: '已提测' });
+  const submitted = result.json();
+  expect(submitted.progressUpdates).toHaveLength(r.progressUpdates.length + 1);
+  expect(submitted.progressUpdates[0]).toMatchObject({ eventType: 'note', percent: r.progress, content: '实际提测日期：2026-09-12；测试环境已部署，剩余异常响应场景待验证。' });
+  expect(submitted.status).toBe(r.status); expect(submitted.progress).toBe(r.progress);
   expect((await req('POST', f.base + '/requirements/' + r.id + '/test-submission', { expectedVersion: result.json().version, actualDate: '2026-09-12' })).statusCode).toBe(400);
+  expect((await req('GET', '/api/requirements/' + r.id)).json().progressUpdates).toEqual(submitted.progressUpdates);
   const stage = result.json().executionStage, list = (await req('GET', '/api/requirements?projectId=' + f.projectId)).json().find((v: { id: string }) => v.id === r.id), graph = (await req('GET', f.base + '/path-graph')).json().cards.find((v: { id: string }) => v.id === r.id);
   expect(list.executionStage).toEqual(stage); expect(graph.executionStage).toEqual(stage); expect((await f.phase(a.id)).requirements[0].executionStage).toEqual(stage);
 });

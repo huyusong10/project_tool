@@ -1,5 +1,39 @@
 import {expect,test} from '@playwright/test';
 import {phaseFixture as fixture,historicalPhaseFixture} from './phase-fixture';
+import {todayIso} from '../../src/shared/domain';
+
+test('收尾工作完成后 Phase 展示实际日期，并能直达完成记录及返回',async({page})=>{
+ const f=await fixture(page);
+ const direct=await(await page.request.get('/api/requirements/'+f.direct.id)).json();
+ const done=await page.request.post('/api/requirements/'+direct.id+'/complete',{data:{expectedVersion:direct.version,content:'直接执行需求已核对'}});
+ expect(done.ok(),await done.text()).toBe(true);
+ await page.goto('/?'+new URLSearchParams({projectId:f.projectId,workspaceView:'list',scopeType:'project',detailId:'phase:'+f.phases[1].id}));
+ const detail=page.locator('.modal-card-workspace[role=dialog]');
+ await detail.getByRole('button',{name:f.testing.title,exact:true}).click();
+ await detail.getByRole('tab',{name:'工作项 2',exact:true}).click();
+ await detail.getByRole('button',{name:'完成',exact:true}).click();
+ const complete=page.getByRole('dialog',{name:'完成工作项',exact:true});
+ await complete.getByLabel('完成说明（可选）',{exact:true}).fill('收尾核验通过，完成本阶段交付。');
+ await complete.getByRole('button',{name:'确认完成',exact:true}).click();
+ await expect(complete).toHaveCount(0);
+ await detail.getByRole('button',{name:'返回'+f.phases[1].name,exact:true}).click();
+ const progress=detail.getByRole('region',{name:'交付进展',exact:true});
+ await expect(progress).toContainText('2 / 2 条需求完成');
+ await expect(progress.locator('dl')).toContainText(todayIso());
+ await expect(progress).not.toContainText('尚未完成');
+  await page.reload();
+  await expect(progress.locator('dl')).toContainText(todayIso());
+  await expect(page.getByRole('region',{name:'当前范围概览'}).locator('.overview-metric').filter({hasText:'近7天完成'})).toContainText('3 · 累计 3');
+ await detail.getByRole('tab',{name:'记录',exact:true}).click();
+ await expect(detail.getByRole('region',{name:'需求执行记录',exact:true})).toContainText('Phase 状态随需求自动更新');
+ await detail.getByRole('button',{name:f.testing.title,exact:true}).click();
+ await expect(detail.getByRole('tab',{name:'记录',exact:true})).toHaveAttribute('aria-selected','true');
+ await expect(detail).toContainText('收尾核验通过，完成本阶段交付。');
+ await detail.getByRole('button',{name:'返回'+f.phases[1].name,exact:true}).click();
+ await expect(detail.getByRole('tab',{name:'记录',exact:true})).toHaveAttribute('aria-selected','true');
+ const phases=await(await page.request.get(f.base+'/feature-phases')).json();
+ expect(phases.find((item:{id:string})=>item.id===f.phases[1].id)).toMatchObject({status:'completed',completedAt:todayIso(),deliveries:[]});
+});
 
 test('特性 Phase、需求阶段、进展表和关系图在办公及窄屏可读',{tag:'@responsive'},async({page},info)=>{
  const f=await fixture(page),errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));

@@ -48,6 +48,8 @@ Playwright 使用 `.playwright/` 下的独立构建产物和临时数据库，�
 
 ## 运行日志
 
+管理员可在“系统管理 → 系统运行信息”查看当前进程的日志目录和级别；未启用文件日志时，页面提示查看服务进程输出。
+
 默认 INFO：记录服务启停、业务写入和异常；成功查询、版本轮询、健康检查及静态资源记 DEBUG。慢请求提升为 WARN，HTTP 5xx 和未知工具异常记 ERROR。MCP 按工具实际结果判断成功或失败，HTTP 200 不代表工具成功。
 
 交互终端显示带本地时区的单行文本，重定向时输出 JSON。每个事件只占一行，原因、名称和异常堆栈中的换行使用转义字符表示。INFO 及以下写入 stdout，WARN 及以上写入 stderr。文件始终使用 JSON Lines、UTC 时间和文本级别；两种输出使用相同的级别过滤。
@@ -164,3 +166,9 @@ npm run verify    # 原生依赖、代码检查、测试、HTTP 浏览器回归�
 发布前运行 `npm run verify`。HTTP 回归使用普通测试域名，避免 localhost 的浏览器安全上下文例外掩盖局域网问题；不修改正式数据库。测试端口默认 3291，被占用时设置 `$env:PLAYWRIGHT_PORT='3241'` 后再运行。前端 UUID 统一使用 `src/client/random-uuid.ts`，lint 禁止绕过封装；新增依赖安全上下文的浏览器 API 时，须检测支持情况并补充 HTTP 回归。
 
 需要开机自动启动时，以当前用户运行 `install-autostart.ps1`；移除时运行 `uninstall-autostart.ps1`。
+
+## Jira 进展管理
+
+在“个人设置”填写自己的 Jira PAT，在“Jira 进展管理”查看所有本地需求关联的 Jira 状态。项目经理可逐条选择 Jira 当前允许的操作并确认修改，不配置状态映射，不自动连续流转。发现未纳入需求作为次级入口保留。Confluence 继续使用文档链接。
+
+个人设置填写 Token 即可连接 Jira，存储密钥自动生成，支持当前 HTTP 访问入口。本地进展、里程碑、刷新和重启均不会回写 Jira。部署、权限和异常处理见 [Jira 接入说明](docs/jira-integration.md)。

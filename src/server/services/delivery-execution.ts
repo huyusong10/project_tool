@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { coordinationKeys } from '../../shared/blocker-coordination';
 import { createRequirementInputSchema, directRequirementCommandSchema, rescheduleRequirementInputSchema, updateRequirementInputSchema } from '../../shared/contracts';
-import { addBusinessDays, businessDaysInclusive, todayIso } from '../../shared/domain';
+import { addBusinessDays, businessDaysInclusive, rescheduleDirectDates, todayIso } from '../../shared/domain';
 import { analysePaths, dependencySource } from '../../shared/paths';
 import type { Actor } from '../auth';
 import { assertProjectManager, assertRequirementOwnerOrManager, canManageProject, requireAuthorizationActor } from '../authorization';
@@ -16,6 +16,7 @@ import { persistOrganization, validateOrganization } from './intake-metadata';
 import { settleMilestones } from './milestones';
 import { loadPathInput } from './paths';
 import { persistRequirementLinks } from './reference-links';
+import { recordRequirementClarification } from './requirement-events';
 import { getRequirement, type RequirementRecord } from './requirements';
 import { assertExpectedVersion, assertVersionedWrite, describeChanges, normalizeRequirementText, nullableText, requireActiveProject, type JsonObject } from './support';
 
@@ -100,6 +101,7 @@ export function updateDeliveryRequirement(id:string,raw:JsonObject,actor:Actor,s
     if(value.referenceLinks!==undefined||value.referenceUrl!==undefined)persistRequirementLinks(id,value,r);
     if(coordinationChanged)persistCoordination('requirement',id,r.projectId,value,actor);
     if(value.forecastEnd!==undefined&&!split&&!deferNormalization)refreshDirectForecast(id);
+    recordRequirementClarification(r, { background: value.background, acceptanceCriteria: value.acceptanceCriteria }, actor, now);
     if(extra)event(id,'split','拆分剩余工作；已完成基线 '+r.progress+'%。'+(value.reason||''),actor);
     else recordAudit(actor,'update','requirement',id,'修改需求：'+r.title+'；'+describeChanges(r,value)+(value.reason?'；'+value.reason:''));
     requireActiveProject(r.projectId,true);if(wasManager)assertProjectManager(requireAuthorizationActor(actor),r.projectId);else assertRequirementOwnerOrManager(requireAuthorizationActor(actor),id);validateDeliveryFields(r.projectId,value,actor,r,true);
@@ -171,10 +173,9 @@ export function rescheduleDirectRequirement(id:string,raw:JsonObject,actor:Actor
     const r=getRequirement(id);requireActiveProject(r.projectId);assertProjectManager(requireAuthorizationActor(actor),r.projectId);assertExpectedVersion(value,r.version);
     if(['completed','cancelled'].includes(r.status))fail('已结束需求不能重新排期');
     const reason=nullableText(value.reason)||describeChanges(r,value);
-    const duration=r.durationDays||(r.plannedStart&&r.plannedEnd?businessDaysInclusive(r.plannedStart,r.plannedEnd):null);
-    const start=value.plannedStart||(value.plannedEnd&&duration?addBusinessDays(value.plannedEnd,1-duration):null);
-    const end=value.plannedEnd||(value.plannedStart&&duration?addBusinessDays(value.plannedStart,duration-1):null);
-    for(const d of [start,end])if(d&&businessDaysInclusive(d,d)!==1)fail('计划日期必须是工作日');
+    let dates:ReturnType<typeof rescheduleDirectDates>;
+    try{dates=rescheduleDirectDates(r,value);}catch(error){fail((error as Error).message);}
+    const {plannedStart:start,plannedEnd:end}=dates;
     const updated=getDatabaseContext().sqlite.prepare('UPDATE requirements SET planned_start=?,planned_end=?,schedule_anchor=?,version=version+1,updated_at=? WHERE id=? AND version=?').run(start,end,start,new Date().toISOString(),id,r.version);
     assertVersionedWrite(updated,'需求');event(id,'reschedule',reason+'；计划 '+(start||'待定')+' 至 '+(end||'待定'),actor);
     return getRequirement(id);

@@ -21,7 +21,7 @@ export function DeliveryFeatureDetails({feature,phaseId,onEnter,onPhase}:{featur
   const {session}=useSession(),account=session.accountId||'guest',workspace=useProjectWorkspace(),manage=canManageProject(session,feature.projectId),system=feature.kind==='other';
   const [edit,setEdit]=useDeliveryForm<FeatureEdit|null>(feature.projectId,(phaseId||feature.id)+':feature-action',()=>manage?readFeaturePending(account,feature.projectId):null);
   const [phaseEdit,setPhaseEdit]=useDeliveryForm<PhaseEdit|null>(feature.projectId,(phaseId||feature.id)+':phase-action',()=>manage?readPendingPhase(account,feature.projectId)?.edit||null:null);
-  const [creating,setCreating]=useDeliveryForm(feature.projectId,(phaseId||feature.id)+':create-requirement',()=>false);
+  const [creating,setCreating,clearCreating]=useDeliveryForm(feature.projectId,(phaseId||feature.id)+':create-requirement',()=>false);
   const [recheck,setRecheck]=useState(()=>readRequirementCreateRecheck(account,feature.projectId));
   const phase=feature.phases?.find(p=>p.id===phaseId),phases=phase?[phase]:feature.phases||[];
   const beginPhase=(next:PhaseEdit)=>setPhaseEdit(readPendingPhase(account,feature.projectId)?.edit||next);
@@ -32,25 +32,26 @@ export function DeliveryFeatureDetails({feature,phaseId,onEnter,onPhase}:{featur
   const editable=manage&&!feature.archivedAt;
   const phaseActions=phase&&editable?<><Button aria-label="编辑 Phase" title="编辑 Phase" variant="secondary" onClick={()=>beginPhase({feature,phase,mode:'edit'})}>编辑 Phase</Button>{!phase.requirements.length&&!phase.deliveries.length&&<TopbarMenu label="Phase 更多操作"><Button variant="menu" tone="danger" onClick={()=>beginPhase({feature,phase,mode:'delete'})}>删除空 Phase</Button></TopbarMenu>}</>:null;
   const childActions=editable?<>{!phase&&!system&&<Button aria-label="新建 Phase" title="新建 Phase" variant="primary" onClick={()=>beginPhase({feature,mode:'edit'})}>新建 Phase</Button>}<Button aria-label="新建需求" title="新建需求" variant="secondary" onClick={()=>setCreating(true)}>新建需求</Button>{!system&&<Button aria-label="移入需求" title="移入需求" variant="secondary" onClick={()=>beginPhase({feature,phase,mode:'placement'})}>移入需求</Button>}</>:null;
-  const history=<DetailCard title="交付记录">
+  const requirementRows=(rows:Array<(typeof requirements)[number]>,empty='尚未安排需求。',tab?:string)=><div className="detail-related-list">{rows.map(r=><article className="object-related-row" key={r.id}><Button variant="link" wrap onClick={()=>workspace?.inspect(r.id,tab)}>{r.title}</Button><ExecutionStageBadge requirement={r}/></article>)}{!rows.length&&<p className="detail-card-empty">{empty}</p>}</div>;
+  const history=<><DetailCard title="需求执行记录" description="Phase 状态随需求自动更新。选择需求查看完成说明和执行记录。">
+    {requirementRows(requirements,'尚无需求执行记录。','history')}
+  </DetailCard>{phases.some(p=>p.deliveries.length)&&<DetailCard title="历史交付记录">
     {phases.flatMap(p=>p.deliveries.map(d=><article className="object-history-entry" key={d.id}><h4>{p.name} · {d.deliveredAt} · {d.deliveredByName||'原交付人'}</h4><p>{d.snapshot.scope||d.snapshot.name}</p><ul>{d.snapshot.requirements.map(r=><li key={r.id}>{r.title}</li>)}</ul>{d.reopenedAt&&<p>重新打开：{d.reopenReason}</p>}</article>))}
-    {!phases.some(p=>p.deliveries.length)&&<p className="detail-card-empty">尚无交付记录。</p>}
-  </DetailCard>;
-  const requirementRows=(rows:Array<(typeof requirements)[number]>,empty='尚未安排需求。')=><div className="detail-related-list">{rows.map(r=><article className="object-related-row" key={r.id}><Button variant="link" wrap onClick={()=>workspace?.inspect(r.id)}>{r.title}</Button><ExecutionStageBadge requirement={r}/></article>)}{!rows.length&&<p className="detail-card-empty">{empty}</p>}</div>;
+  </DetailCard>}</>;
   const phaseRows=<div className="detail-card-list">{phases.map(p=><article className="detail-card-row" key={p.id}>
     <div className="detail-card-row-main"><Button variant="link" wrap onClick={()=>workspace?.inspect('phase:'+p.id)}>{p.name}</Button><span className="detail-card-row-meta">{p.targetDate||'日期待定'} · {p.requirements.length} 项需求</span></div><PhaseStatusBadge phase={p}/>
   </article>)}{!phases.length&&<p className="detail-card-empty">尚未安排 Phase。</p>}</div>;
   const overview=phase?<>
-    <OverviewIntroduction links={phase.referenceLinks} title="本阶段做什么" text={phase.scope} empty="尚未填写本阶段范围，可在资料中补充。" secondary={{title:'补充说明',text:phase.note}}/>
+    <OverviewIntroduction links={phase.referenceLinks} title="本阶段做什么" text={phase.scope} empty="尚未填写本阶段范围。" secondary={{title:'补充说明',text:phase.note}}/>
     <DetailCard title="交付进展" actions={<PhaseStatusBadge phase={phase}/>}>
-      <dl className="object-facts"><div><dt>目标交付</dt><dd>{phase.targetDate||'待定'}</dd></div><div><dt>实际完成</dt><dd>{phase.completedAt||'尚未完成'}</dd></div></dl>
+      <dl className="object-facts"><div><dt>目标交付</dt><dd>{phase.targetDate||'待定'}</dd></div><div><dt>实际完成</dt><dd>{phase.completedAt||(phase.status==='completed'?'完成日期缺失':'尚未完成')}</dd></div></dl>
       <div className="phase-distribution">{phase.distribution.map(s=><span key={s.key}>{s.label} {s.count}　</span>)}</div>
       {phase.overdue&&<p className="warning-banner">已超过目标交付日期</p>}
       <p>{phase.requirements.filter(r=>r.status==='completed').length} / {phase.requirements.filter(r=>r.status!=='cancelled').length} 条需求完成</p>
     </DetailCard>
     <DetailCard title="未完成需求">{requirementRows(phase.requirements.filter(r=>!['completed','cancelled'].includes(r.status)),'当前没有未完成需求。')}</DetailCard>
   </>:<>
-    <OverviewIntroduction links={feature.referenceLinks} title={system?'归类说明':'目标与范围'} text={system?'临时和补充需求放在这里，明确所属特性后可以移入对应范围。':feature.description} empty="尚未填写特性目标与范围，可在资料中补充。"/>
+    <OverviewIntroduction links={feature.referenceLinks} title={system?'归类说明':'目标与范围'} text={system?'临时和补充需求放在这里，明确所属特性后可以移入对应范围。':feature.description} empty="尚未填写特性目标与范围。"/>
     <DetailCard title="交付进展" actions={<FeatureAssessment feature={feature}/>} description={feature.assessedAt?'最近评估：'+formatDateTime(feature.assessedAt):undefined}>
       {(feature.overview.expectation||feature.overview.progressSummary||feature.overview.note)&&<dl className="object-facts">
         {feature.overview.expectation&&<div className="object-fact-wide"><dt>当前预期</dt><dd>{feature.overview.expectation}</dd></div>}
@@ -83,6 +84,6 @@ export function DeliveryFeatureDetails({feature,phaseId,onEnter,onPhase}:{featur
   ]}>
     {edit&&<FeatureEditor projectId={feature.projectId} edit={edit} onClose={()=>setEdit(null)}/>}
     {phaseEdit&&<PhaseDialog key={(phaseEdit.phase?.id||phaseEdit.feature.id)+phaseEdit.mode} edit={phaseEdit} onClose={()=>setPhaseEdit(null)}/>}
-    {(creating||recheck)&&<RequirementForm projectId={feature.projectId} defaultFeatureId={feature.id} defaultPhaseId={phase?.id} initialRequirementIds={workspace?.data.requirements.map(r=>r.id)||[]} recheck={recheck} onRecheckChange={value=>{setRecheck(value);persistRequirementCreateRecheck(account,feature.projectId,value);}} onClose={()=>setCreating(false)}/>}
+    {(creating||recheck)&&<RequirementForm projectId={feature.projectId} defaultFeatureId={feature.id} defaultPhaseId={phase?.id} initialRequirementIds={workspace?.data.requirements.map(r=>r.id)||[]} recheck={recheck} onRecheckChange={value=>{setRecheck(value);persistRequirementCreateRecheck(account,feature.projectId,value);}} onClose={()=>{setCreating(false);clearCreating();}} onCreated={created=>workspace?.inspect(created.id,'overview')}/>}
   </DetailWorkspace>;
 }

@@ -42,7 +42,7 @@ import { requirementOwner } from './requirement-owner';
 
 import { syncStoredRequirementState, updateStoredRequirementSchedule } from './requirement-state';
 
-import { appendRequirementEvent } from './requirement-events';
+import { appendRequirementEvent, recordRequirementClarification } from './requirement-events';
 
 import { assertOptionalArchiveGeneration } from './archive-guards';
 
@@ -150,7 +150,7 @@ export function createRequirement(input: JsonObject, actor: Actor, deferNormaliz
     requireActiveProject(projectId, true);
     assertProjectManager(requireAuthorizationActor(actor), projectId);
     const organization = JSON.stringify({featureId:input.featureId,phaseId:input.phaseId,reason:input.reason});
-    audit(actor, 'create', 'requirement', id, plannedStart ? `创建需求并生成工作项：${title}` : `创建需求：${title}${organization==='{}'?'':'；'+organization}`);
+    audit(actor, 'create', 'requirement', id, `${plannedStart ? '创建需求并生成工作项' : '创建需求'}：${title}${organization==='{}'?'':'；'+organization}`);
   });
   tx();
   return getRequirement(id, false, !deferNormalization);
@@ -278,7 +278,15 @@ function changeRequirement(id: string, input: JsonObject, actor: Actor, deferAna
     if (ownerId !== current.ownerId) validateDeliveryFields(current.projectId, { ownerId }, actor, current, true);
     requireActiveProject(current.projectId, true);
     assertProjectManager(requireAuthorizationActor(actor), current.projectId);
-    audit(actor, auditAction, 'requirement', id, auditSummary);
+    let scheduleNote = '';
+    if (scheduleChanged) {
+      const next = row<{ plannedStart: string | null; plannedEnd: string | null }>('SELECT planned_start AS plannedStart, planned_end AS plannedEnd FROM requirements WHERE id=?', id)!;
+      const reason = nullableText(input.reason);
+      scheduleNote = `计划调整：${current.plannedStart || '未填写'} ～ ${current.plannedEnd || '未填写'} → ${next.plannedStart || '未填写'} ～ ${next.plannedEnd || '未填写'}。${reason ? ` ${reason}` : ''}`;
+      appendRequirementEvent(id, 'note', scheduleNote, actor, null, null, null, now);
+    }
+    recordRequirementClarification(current, { background, acceptanceCriteria }, actor, now);
+    audit(actor, auditAction, 'requirement', id, scheduleNote ? `${auditSummary}；${scheduleNote}` : auditSummary);
   })();
   return getRequirement(id, false, !deferAnalysis);
 }

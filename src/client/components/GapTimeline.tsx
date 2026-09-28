@@ -52,6 +52,7 @@ function WorkStatusIcon({ status, size = 12 }: { status: string; size?: number }
 function WorkItemTimelinePopover({ item, updates, asOfDate, executionStatus, forecast }: { item: WorkItem; updates: ProgressUpdate[]; asOfDate: string; executionStatus?: string; forecast?: GanttForecast | null }) {
   const gap = workItemDisplayGap(item, asOfDate);
   const observedEnd = gap.observedEnd;
+  const notStarted = ["not_started", "planning"].includes(item.status) && !gap.actual.start && !observedEnd;
   const related = updates.filter((update) => update.workItemId === item.id).slice(0, 2);
   return <>
     <header className="gantt-popover-header">
@@ -62,10 +63,10 @@ function WorkItemTimelinePopover({ item, updates, asOfDate, executionStatus, for
       <div><dt>实际进度</dt><dd>{item.progress}%</dd></div>
       {forecast && <div><dt>预计完成</dt><dd>{forecast.label}<small className="gantt-range-note">{forecast.details}</small></dd></div>}
       <div><dt>计划周期</dt><dd>{dateLabel(item.plannedStart)} — {dateLabel(item.plannedEnd)}</dd></div>
-      <div><dt>实际执行跨度</dt><dd>{dateLabel(item.actualStart, "未开始")} — {dateLabel(observedEnd, "结束日期缺失")}{gap.actual.ongoing && observedEnd ? "（截至统计日）" : ""}</dd></div>
+      <div><dt>实际执行跨度</dt><dd>{notStarted ? "尚未开始" : <>{dateLabel(item.actualStart, "缺少开始日期")} — {dateLabel(observedEnd, "结束日期缺失")}{gap.actual.ongoing && observedEnd ? "（截至统计日）" : ""}</>}</dd></div>
       {item.milestoneLabel && <div><dt>里程碑</dt><dd>{item.milestoneLabel} · {item.status === "completed" ? "已达成" : item.status === "cancelled" ? "已取消" : "待达成"}</dd></div>}
       <div><dt>计划 / 实际工期</dt><dd>{item.plannedStart && item.plannedEnd ? `${gap.planDuration}个工作日` : "—"} / {gap.actual.start && gap.actual.end ? `${gap.actualDuration}个工作日` : "—"}</dd></div>
-      {item.status !== "cancelled" && <div><dt>完成 / 耗时偏差</dt>{!item.plannedStart || !item.plannedEnd ? <dd>待排期</dd> : !gap.actual.start || !gap.actual.end ? <dd>实际日期待确认</dd> : <dd className={gap.finishVariance > 0 || gap.durationVariance > 0 ? "danger-text" : ""}>{gap.finishVariance > 0 ? "+" : ""}{gap.finishVariance}个工作日 / {gap.durationVariance > 0 ? "+" : ""}{gap.durationVariance}个工作日</dd>}</div>}
+      {item.status !== "cancelled" && <div><dt>完成 / 耗时偏差</dt>{!item.plannedStart || !item.plannedEnd ? <dd>待排期</dd> : notStarted ? <dd>尚未开始</dd> : !gap.actual.start || !gap.actual.end ? <dd>实际日期待确认</dd> : <dd className={gap.finishVariance > 0 || gap.durationVariance > 0 ? "danger-text" : ""}>{gap.finishVariance > 0 ? "+" : ""}{gap.finishVariance}个工作日 / {gap.durationVariance > 0 ? "+" : ""}{gap.durationVariance}个工作日</dd>}</div>}
     </dl>
     {related.length > 0 && <section className="gantt-popover-updates"><h4>相关进展</h4>{related.map((update) => {
       const displayedPercent = progressUpdateDisplayValue(update);

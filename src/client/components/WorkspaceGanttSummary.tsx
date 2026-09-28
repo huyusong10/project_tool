@@ -34,7 +34,7 @@ export function WorkspaceGanttSummary({row,asOfDate,milestones=[]}:{row:Workspac
       {w?.blockedReason&&<div><dt>受阻原因</dt><dd className="danger-text">{w.blockedReason}</dd></div>}
       {!!w?.unmetPredecessors?.length&&<div><dt>等待前置</dt><dd>{w.unmetPredecessors.map(p=>p.title).join('、')}</dd></div>}
     </dl>
-    {!!milestones.length&&<details className="workspace-summary-milestones"><summary>里程碑记录 · {milestones.length}</summary>{milestones.map(m=><p key={m.id}>{m.title}<small>{m.cancelled?'已取消':m.actualDate?'已达成 '+m.actualDate:m.targetDate?'目标 '+m.targetDate:'尚未安排日期'}</small></p>)}</details>}
+    {!!milestones.length&&<details className="workspace-summary-milestones"><summary>里程碑记录 · {milestones.length}</summary>{milestones.map(m=><p key={m.id}>{m.title}<small>{m.cancelled?'已取消':m.actualDate?'已达成 '+m.actualDate:m.targetDate?'目标 '+m.targetDate:'尚未安排日期'}</small>{m.actualDate&&m.targetDate&&<small>目标 {m.targetDate}</small>}</p>)}</details>}
     <section><h4>最近进展</h4>{updates.length?updates.map(u=><article key={u.id}><time>{new Date(u.createdAt).toLocaleDateString('zh-CN',{month:'2-digit',day:'2-digit'})}</time><p>{u.content}</p>{progressUpdateDisplayValue(u)!=null&&<b>{progressUpdateDisplayValue(u)}%</b>}</article>):<p className="workspace-summary-empty">{w?'近期记录中没有这项工作的更新':'暂无近期进展记录'}</p>}</section>
   </div>;
 }

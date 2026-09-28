@@ -50,6 +50,17 @@ describe("进度趋势", () => {
 });
 
 describe("进展数字显示", () => {
+  it('计划说明保留进度快照，但不显示为进度变更或覆盖比较基线', () => {
+    const common = { requirementId: 'r1', workItemId: null, workItemTitle: null, workItemPercent: null, content: '计划调整说明', updatedAt: '2026-09-24T10:00:00+08:00' };
+    const metadata = progressHistoryMetadata([
+      { ...common, id: 'after', eventType: 'progress', percent: 40, createdAt: '2026-09-24T11:00:00+08:00' },
+      { ...common, id: 'note', eventType: 'note', percent: 35, createdAt: '2026-09-24T10:00:00+08:00' },
+      { ...common, id: 'before', eventType: 'progress', percent: 20, createdAt: '2026-09-24T09:00:00+08:00' },
+    ]);
+    expect(metadata.get('note')).toMatchObject({ transitionLabel: '说明', transitionTitle: '本次只记录说明，完成度没有变化' });
+    expect(metadata.get('after')).toMatchObject({ transitionLabel: '20 → 40%' });
+  });
+
   it("工作项说明不回退显示需求进度，需求记录仍显示需求快照", () => {
     expect(progressUpdateDisplayValue({ workItemId: "w1", workItemPercent: 40, percent: 70 })).toBe(40);
     expect(progressUpdateDisplayValue({ workItemId: "w1", workItemPercent: null, percent: 70 })).toBeNull();

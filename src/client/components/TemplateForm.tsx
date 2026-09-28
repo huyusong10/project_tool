@@ -20,6 +20,7 @@ import { canManageProject } from '../permissions';
 import { keys, invalidateTemplateViews } from '../query-keys';
 import type { WorkItemTemplate } from '../types';
 import { useGraphHistory } from '../use-graph-draft';
+import { newHistory } from '../editor-session';
 import { readDraftRecord, writeSharedDraftRecord, watchDraftRecord } from '../graph-draft-storage';
 import { resolveTemplateOffsets, suggestTemplatePredecessors, type TemplateDependencyItem } from '../../shared/path-template';
 import { DependencyCycleError } from '../../shared/paths';
@@ -34,13 +35,17 @@ import { PredecessorPicker } from './PredecessorPicker';
 import { Modal } from './Modal';
 import { templateFieldActive } from '../editor-fields';
 import { TemplatePreview } from './TemplatePreview';
+import { templateOverview } from '../template-overview';
 import { useToast } from './Toast';
 
 type Item=TemplateDependencyItem&{clientKey:string;predecessorKeys:string[];milestoneLabel:string|null;sortOrder:number};
 type Draft={name:string;description:string;dependencyMode:'legacy'|'dependencies';items:Item[];positions:Record<string,Point>;layoutVersion:number};
-function initialDraft(template?:WorkItemTemplate):Draft{
-  const items:Item[]=template?template.items.map(i=>({...i,clientKey:i.id,kind:i.kind||'work',predecessorKeys:i.predecessorIds||[],milestoneLabel:null})):[{clientKey:randomUUID(),title:'新工作项',kind:'work',durationDays:1,startOffsetDays:0,predecessorKeys:[],milestoneLabel:null,sortOrder:0}];
-  return {name:template?.name||'',description:template?.description||'',dependencyMode:template?.dependencyMode||'dependencies',items,positions:template?.layout?.positions||{},layoutVersion:template?.layout?.version||0};
+function initialDraft(template?:WorkItemTemplate,copy=false):Draft{
+  // The preview already expands legacy labels into milestone nodes. Keep those
+  // nodes in the editable draft so clearing the legacy field cannot lose them.
+  const savedIds=new Set(copy?[]:template?.items.map(i=>i.id));
+  const items:Item[]=template?templateOverview(template).nodes.map(i=>({...i,id:savedIds.has(i.id)?i.id:undefined,clientKey:i.id,kind:i.kind||'work',predecessorKeys:i.predecessorIds||[],milestoneLabel:null})):[{clientKey:randomUUID(),title:'新工作项',kind:'work',durationDays:1,startOffsetDays:0,predecessorKeys:[],milestoneLabel:null,sortOrder:0}];
+  return {name:template?(copy?copyLabel(template.name,'（副本）'):template.name):'',description:template?.description||'',dependencyMode:template?.dependencyMode||'dependencies',items,positions:template?.layout?.positions||{},layoutVersion:copy?0:template?.layout?.version||0};
 }
 function rebaseTemplate(base:Draft,server:Draft,current:Draft,choices:Record<string,'draft'|'server'>){
  const conflicts:Array<{key:string;title:string;server:unknown;draft:unknown;canKeep:boolean}>=[],same=(a:unknown,b:unknown)=>JSON.stringify(a??null)===JSON.stringify(b??null);
@@ -50,6 +55,11 @@ function rebaseTemplate(base:Draft,server:Draft,current:Draft,choices:Record<str
  for(const n of server.items)if(!current.items.some(i=>i.clientKey===n.clientKey)){const b=base.items.find(i=>i.clientKey===n.clientKey);if(!b)merged.items.push(n);else if(!same(b,n)){conflicts.push({key:n.clientKey,title:n.title+' 删除冲突',server:n,draft:'删除',canKeep:true});if(choices[n.clientKey]==='server')merged.items.push(n);}}
  merged.items=merged.items.map(i=>({...i,predecessorKeys:i.predecessorKeys.filter(id=>merged.items.some(n=>n.clientKey===id))}));merged.positions=Object.fromEntries(Object.entries(merged.positions).filter(([id])=>merged.items.some(i=>i.clientKey===id)));
  return {merged,conflicts,pending:conflicts.filter(c=>!choices[c.key]).length};
+}
+export async function createTemplateCopyDraft(accountId:string,projectId:string,template:WorkItemTemplate){
+  const id=randomUUID();
+  await writeSharedDraftRecord(`pm-graph-draft:${accountId}:${projectId}:template:${id}`,{...newHistory(initialDraft(template,true),'new'),active:true});
+  return id;
 }
 export function TemplateForm({template,templateUnavailable=false,projectId,onClose,onSaved}:{template?:WorkItemTemplate;templateUnavailable?:boolean;projectId:string;onClose:()=>void;onSaved?:(value:WorkItemTemplate,selectedId?:string)=>void}){
   const {session}=useSession(),client=useQueryClient(),[params,setParams]=useWorkspaceParams(),toast=useToast();

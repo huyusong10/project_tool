@@ -46,7 +46,7 @@ export function createRuntimeLogger(options = {}) {
   const now = options.now || (() => new Date());
   const role = options.role === 'launcher' ? 'launcher' : 'server';
   const pid = options.pid || process.pid;
-  const secrets = [...(options.secrets || []), process.env.ADMIN_PASSWORD, process.env.APP_PASSWORD_HASH, process.env.SESSION_SECRET].filter(Boolean);
+  const secrets = [...(options.secrets || []), process.env.ADMIN_PASSWORD, process.env.APP_PASSWORD_HASH, process.env.SESSION_SECRET, process.env.JIRA_ENCRYPTION_KEY].filter(Boolean);
   const clean = value => {
     let text = String(value);
     for (const secret of secrets) text = text.split(secret).join('[REDACTED]');

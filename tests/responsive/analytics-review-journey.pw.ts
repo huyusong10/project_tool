@@ -1,0 +1,53 @@
+import { expect, test } from '@playwright/test';
+import { addBusinessDays, todayIso } from '../../src/shared/domain';
+import type { Requirement } from '../../src/client/types';
+import { chooseOption } from './select-helper';
+
+test.use({ actionTimeout: 10_000 });
+
+test('完成偏差明细可进入真实需求记录，返回与刷新保留分析范围', async ({ page }) => {
+  const post = async (url: string, data: unknown) => {
+    const response = await page.request.post(url, { data });
+    expect(response.ok(), await response.text()).toBe(true);
+    return response.json();
+  };
+  await post('/api/login', { username: 'admin', password: '41_xc7q0qOjo4Inw!' });
+  const project = await post('/api/projects', { name: '交付复盘 ' + Date.now() });
+  const owner = await post('/api/people', { projectId: project.id, name: '复盘负责人 ' + Date.now() });
+  const yesterday = addBusinessDays(todayIso(), -1);
+  let requirement: Requirement = await post('/api/requirements', { projectId: project.id, title: '跨系统资料核对与交付偏差复盘', ownerId: owner.id, plannedStart: yesterday, plannedEnd: yesterday });
+  requirement = await post('/api/requirements/' + requirement.id + '/start', { expectedVersion: requirement.version });
+  await post('/api/requirements/' + requirement.id + '/complete', { expectedVersion: requirement.version, content: '等待交付资料核对后完成' });
+  const read = async () => (await page.request.get('/api/requirements/' + requirement.id)).json();
+  const before = await read();
+  const url = '/analytics?' + new URLSearchParams({ projectId: project.id, range: 'custom', from: yesterday, to: todayIso() });
+  await page.goto(url);
+  const panel = page.locator('article').filter({ has: page.getByRole('heading', { name: '耗时偏差 Top 10', exact: true }) });
+  await panel.getByText('查看需求明细', { exact: true }).click();
+  await expect(panel.getByRole('cell', { name: '1个工作日', exact: true })).toBeVisible();
+  await panel.getByRole('link', { name: requirement.title, exact: true }).click();
+  const details = page.getByRole('dialog', { name: requirement.title, exact: true });
+  await expect(details).toBeVisible();
+  await details.getByRole('tab', { name: '记录', exact: true }).click();
+  await expect(details).toContainText('等待交付资料核对后完成');
+  await page.goBack();
+  await expect(page).toHaveURL(url);
+  await expect(page.getByLabel('分析开始日期', { exact: true })).toHaveValue(yesterday);
+  await page.reload();
+  await expect(page.getByLabel('分析结束日期', { exact: true })).toHaveValue(todayIso());
+  await page.setViewportSize({ width: 390, height: 844 });
+  await panel.getByText('查看需求明细', { exact: true }).click();
+  await expect(panel.getByRole('link', { name: requirement.title, exact: true })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+  await page.setViewportSize({ width: 1280, height: 850 });
+  await page.getByRole('button', { name: '编辑看板', exact: true }).click();
+  await page.getByRole('button', { name: '编辑耗时偏差 Top 10', exact: true }).click();
+  const editor = page.getByRole('dialog', { name: '配置分析图表', exact: true });
+  await chooseOption(editor.getByRole('combobox', { name: '图表类型', exact: true }), 'table');
+  await editor.getByRole('button', { name: '应用配置', exact: true }).click();
+  await page.getByRole('button', { name: '保存布局', exact: true }).click();
+  await expect(page.getByRole('button', { name: '编辑看板', exact: true })).toBeVisible();
+  await expect(panel.getByRole('link', { name: requirement.title, exact: true })).toBeVisible();
+  await expect(panel.getByRole('cell', { name: '1个工作日', exact: true })).toBeVisible();
+  expect(await read()).toEqual(before);
+});

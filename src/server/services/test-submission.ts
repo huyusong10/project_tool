@@ -8,6 +8,7 @@ import { businessDateFromDateTime, todayIso } from '../../shared/domain';
 import { recordAudit } from './audit';
 import { requireActiveProject } from './support';
 import { getRequirement } from './requirements';
+import { appendRequirementEvent } from './requirement-events';
 
 export function recordTestSubmission(input: { projectId: string; requirementId: string; expectedVersion: number; actualDate: string; content?: string }, actor: Actor) {
   return getDatabaseContext().sqlite.transaction(() => {
@@ -22,7 +23,9 @@ export function recordTestSubmission(input: { projectId: string; requirementId: 
     if (existing) fail('本轮已经记录提测，请刷新核对');
     getDatabaseContext().sqlite.prepare("INSERT INTO milestones(id,project_id,requirement_id,title,confirmation_mode,milestone_kind,achieved_at,achieved_recorded_at,achieved_by,created_at,updated_at) VALUES(?,?,?,'已提测','manual','test_submitted',?,?,?,?,?)").run(randomUUID(), r.projectId, r.id, day, now, actor.accountId, now, now);
     getDatabaseContext().sqlite.prepare('UPDATE requirements SET version=version+1,updated_at=? WHERE id=?').run(now, r.id);
-    recordAudit(actor, 'test_submission', 'requirement', r.id, '实际提测日期：' + day + (input.content ? '；' + input.content : ''), r.projectId);
+    const content = '实际提测日期：' + day + (input.content ? '；' + input.content : '');
+    appendRequirementEvent(r.id, 'note', content, actor, null, null, null, now);
+    recordAudit(actor, 'test_submission', 'requirement', r.id, content, r.projectId);
     return getRequirement(r.id);
   }).immediate();
 }

@@ -1,6 +1,7 @@
 import { searchAudit } from '../features/audit/api';
 import { Button } from '../components/Button';
-import { useLocation } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
+import { auditObjectUrl, auditSummary } from '../features/audit/presentation';
 import { Select } from '../components/Select';
 import { useListPagination } from '../use-list-pagination';
 import { usePageSearchParams, usePageScrollPosition } from '../use-page-view';
@@ -83,18 +84,22 @@ export function LogsPage() {
         <header><div><h2>写入记录</h2><p>{data ? <>共 {data.total} 条，</> : null}按时间倒序</p></div><Button variant="secondary" type="button" className="ghost-button" disabled={isFetching} onClick={refetch}>刷新</Button></header>
         <div className="audit-table paged-body" ref={pagination.scrollRef}>
           {Boolean(data?.items.length) && <div className="audit-head"><span>时间（北京时间）</span><span>来源</span><span>对象</span><span>动作</span><span>内容</span></div>}
-          {data?.items.map((item) => <div className="audit-row" key={item.id}>
+          {data?.items.map((item) => {
+            const summary = auditSummary(item.summary), objectUrl = auditObjectUrl(item);
+            return <div className="audit-row" key={item.id}>
             <span>{new Date(item.createdAt).toLocaleString("zh-CN", { timeZone: 'Asia/Shanghai' })}</span>
             <span title={item.actorType === "token" && item.tokenName ? `MCP Token：${item.tokenName}` : undefined}>{item.actorType === "system" ? "系统" : item.actorName || "已删除用户"}{item.actorType === "token" && ` · MCP${item.tokenName ? `（${item.tokenName}）` : ""}`}</span>
             <span>{auditEntityLabels[item.entityType] || item.entityType}{admin && item.projectName && <small className="audit-project-name" title={item.projectName}>{item.projectName}</small>}</span>
             <span>{auditActionLabels[item.action] || item.action}</span>
             <details className="audit-content">
-              <summary title="展开或收起操作内容">{item.summary}</summary>
+              <summary title="展开或收起操作内容">{summary}</summary>
               {admin && item.projectName && <p className="audit-project-context">项目：{item.projectName}</p>}
-              <p>{item.summary}</p>
+              <p>{summary}</p>
+              {objectUrl && <Link className="audit-object-link" to={objectUrl}>查看当前对象</Link>}
+              {summary !== item.summary && <details className="audit-original"><summary>原始记录</summary><pre>{item.summary}</pre></details>}
               {item.entityId && <small>对象 ID：{item.entityId}</small>}
             </details>
-          </div>)}
+          </div>;})}
           {isLoading && !data ? <LoadingState label="正在加载操作日志…" /> : listUnavailable
             ? <EmptyState title="操作日志加载失败" detail={error?.message || "暂时无法读取操作日志。"} action={<Button variant="secondary" className="ghost-button" disabled={isFetching} onClick={() => void refetch()}>重新加载</Button>} />
             : !data?.items.length && !isLoading && <EmptyState title="没有符合条件的日志" detail="调整搜索词或筛选条件后重试。" />}

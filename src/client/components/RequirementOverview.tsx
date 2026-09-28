@@ -20,16 +20,19 @@ export function RequirementOverview({ requirement: r, compact=false, onArrangeSc
   const risk = requirementRiskDisplay(r), variance = requirementVarianceDisplay(r);
   const deliveryDate=requirementDeliveryDate(r);
   const direct = r.executionMode === 'direct';
+  const splitBase = !direct && r.splitAt ? r.splitBaseProgress || 0 : 0;
   const schedule = requirementScheduleSummary(r);
   const plannedLabel = r.scheduleComplete === false || r.plannedProgress === null ? schedule.label : `计划 ${r.plannedProgress}%`;
   const progressHint = `${plannedLabel} · ${direct ? '直接记录完成度' : '自动按工期加权'}`;
+  const submission = r.milestones?.filter(m => m.milestoneKind === 'test_submitted' && m.achievedAt && !m.cancelled && (!r.stageResetAt || (m.achievedRecordedAt || m.achievedAt) > r.stageResetAt))
+    .sort((a, b) => (b.achievedRecordedAt || b.achievedAt || '').localeCompare(a.achievedRecordedAt || a.achievedAt || ''))[0];
   return <section className={"requirement-overview"+(compact?" is-compact":"")} aria-label="需求概览">
-    <OverviewIntroduction links={r.referenceLinks} legacy={r.referenceUrl} title="需求说明" text={r.background} empty="尚未填写需求说明，可在资料中补充。" secondary={{title:'完成标准',text:r.acceptanceCriteria}}/>
+    <OverviewIntroduction links={r.referenceLinks} legacy={r.referenceUrl} title="需求说明" text={r.background} empty="尚未填写需求说明。" secondary={{title:'完成标准',text:r.acceptanceCriteria}}/>
     <DetailCard title="执行进展">
     <div className="requirement-overview-top">
       <div className="requirement-overview-meta">
         <ExecutionStageBadge requirement={r} />
-        {direct&&<span title={progressHint}>完成度 {r.progress}%</span>}
+        <span title={progressHint}>完成度 {r.progress}%</span>
         {!compact&&<span className="requirement-overview-owner" title={`需求负责人：${r.ownerName || '待指定'}`}>负责人 <strong>{r.ownerName || '待指定'}</strong></span>}
       </div>
       <div className="requirement-overview-actions">
@@ -37,17 +40,19 @@ export function RequirementOverview({ requirement: r, compact=false, onArrangeSc
         {!compact&&<Button variant="ghost" iconOnly ref={anchor} className="icon-button" title="进度计算说明" aria-label="需求资料与计算说明" aria-expanded={details} onClick={() => setDetails(v => !v)}><Info size={15} /></Button>}
       </div>
     </div>
+    {submission && <p className="field-help">本轮提测：<time dateTime={submission.achievedAt!}>{submission.achievedAt}</time>。{workspace && <Button variant="link" size="compact" onClick={() => workspace.inspect(r.id, 'history')}>查看提测记录</Button>}</p>}
+    {splitBase > 0 && <p className="field-help">拆分前已完成 {splitBase}%；工作项推进剩余 {100 - splitBase}%。</p>}
     {compact?<dl className="object-facts">
       <div><dt>负责人</dt><dd>{r.ownerName||'待指定'}</dd></div>
       <div><dt>交付安排</dt><dd>{r.featureName||'未关联特性'} / {r.phaseName||'未分派阶段'}</dd></div>
-      <div><dt>{r.splitAt?'计划基线':'计划日期'}</dt><dd title={r.splitAt?'保留拆分前的需求计划；各工作项的日期在“工作项”中安排':undefined}>{r.plannedStart||'待定'} ～ {r.plannedEnd||'待定'}</dd></div>
+      <div><dt>{r.splitAt?'计划基线':'计划日期'}</dt><dd title={r.splitAt?'需求计划作为对照基线；各工作项的日期在“工作项”中安排':undefined}>{r.plannedStart||'待定'} ～ {r.plannedEnd||'待定'}</dd></div>
       <div><dt>{deliveryDate.label}</dt><dd title={deliveryDate.help}>{deliveryDate.value}</dd></div>
-      <div><dt>偏差</dt><dd title={variance.title}>{variance.label}</dd></div>
+      <div><dt>偏差</dt><dd title={variance.title}>{variance.label}{variance.detail&&<p className="field-help">{variance.detail}</p>}</dd></div>
       <div><dt>风险</dt><dd title={r.riskReason}>{risk.label}</dd></div>
     </dl>:<div className="detail-kpis">
       <article><span>交付安排</span><strong style={{fontSize:16}}>{r.phaseName || "未分派阶段"}</strong><small>{r.featureName || "未关联特性"}</small></article>
       <article title={deliveryDate.help+"；当前计划："+(r.plannedStart||"待排期")+" → "+(r.plannedEnd||"待排期")}><span>{deliveryDate.label}</span><strong>{deliveryDate.value}</strong></article>
-      <article title={variance.title}><span>偏差</span><strong className={variance.className}>{variance.label}</strong></article>
+      <article title={variance.title}><span>偏差</span><strong className={variance.className}>{variance.label}</strong>{variance.detail&&<small>{variance.detail}</small>}</article>
       <article title={r.riskReason}><span>风险</span><span className={`risk-badge ${risk.className}`}>{risk.label}</span></article>
     </div>}
     {!!schedule.gaps.length&&<section className="schedule-gaps" aria-label="待补全的排期">

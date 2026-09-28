@@ -16,43 +16,61 @@ async function setup(page:Page){
  await page.emulateMedia({reducedMotion:'reduce'});
 }
 async function openProgress(page:Page){await page.goto('/execution');await page.getByRole('button',{name:'展开全部',exact:true}).click();await expect(page.locator('.workspace-gantt-scroll')).toHaveAttribute('data-gantt-ready','true');}
-test('需求行显示最近达成日期，详情保留目标与历史记录，浏览不写入',async({page})=>{
+test('需求行移除达成标记，摘要保留目标与历史记录，浏览不写入',async({page})=>{
  await setup(page);const writes:string[]=[];page.on('request',r=>{if(r.method()!=='GET'&&r.url().includes('/api/'))writes.push(r.url());});await openProgress(page);
- const surface=page.locator('.workspace-gantt-scroll'),row=surface.locator('[data-row-id="r1"]'),pin=row.locator('[data-milestone-id="m1"]');
- await expect(row.locator('[data-milestone-id]')).toHaveCount(1);await expect(pin).toHaveAttribute('data-milestone-date','2026-09-03');
- const at=await pin.evaluate(e=>parseFloat((e as HTMLElement).style.left));const end=await surface.locator('[data-date="2026-09-03"]').evaluate(e=>parseFloat((e as HTMLElement).style.left)+parseFloat((e as HTMLElement).style.width));expect(at).toBe(end);
- await pin.click();const dialog=page.getByRole('dialog',{name:'里程碑详情'});await expect(dialog).toContainText('实际达成2026-09-03');await expect(dialog).toContainText('目标日期2026-09-04');await expect(dialog.locator('.gantt-milestone-summary')).toHaveCount(4);
- await surface.evaluate(e=>e.dispatchEvent(new Event('scroll')));await expect(dialog).toBeVisible();
- await page.keyboard.press('Escape');await expect(dialog).toHaveCount(0);await pin.click();await page.locator('.workspace-time-tools').click({position:{x:3,y:3}});await expect(dialog).toHaveCount(0);
- await pin.click();await expect(dialog).toBeVisible();await surface.evaluate(e=>{e.scrollLeft+=40;});await expect(dialog).toHaveCount(0);expect(writes).toEqual([]);
+ const surface=page.locator('.workspace-gantt-scroll'),row=surface.locator('[data-row-id="r1"]');
+ await expect(row.locator('[data-milestone-id]')).toHaveCount(0);
+ await row.locator('.workspace-row-title').focus();const details=page.getByRole('tooltip');await details.locator('.workspace-summary-milestones summary').click();
+ // Reading expanded history must outlive the delayed close triggered by leaving the row title.
+ await page.waitForTimeout(250);
+ await expect(details).toContainText('已达成 2026-09-03');await expect(details).toContainText('目标 2026-09-04');await expect(details.locator('.workspace-summary-milestones>p')).toHaveCount(4);
+ await page.keyboard.press('Escape');await expect(details).toHaveCount(0);
+ await row.locator('.workspace-row-title').hover();await expect(details).toContainText('里程碑记录');
+ await page.keyboard.press('Escape');await expect(details).toHaveCount(0);expect(writes).toEqual([]);
 });
-test('实际里程碑随日期轴缩放，窄屏保持固定行高与可见详情',{tag:'@responsive'},async({page},info)=>{
- await setup(page);await openProgress(page);const surface=page.locator('.workspace-gantt-scroll'),row=surface.locator('[data-row-id="r1"]'),pin=row.locator('[data-milestone-id="m1"]');
+
+test('键盘展开里程碑记录后保持阅读，离开焦点和 Escape 可以关闭',async({page})=>{
+ await setup(page);await openProgress(page);
+ const title=page.locator('[data-row-id="r1"] .workspace-row-title'),details=page.getByRole('tooltip');
+ await title.focus();
+ const summary=details.locator('.workspace-summary-milestones summary');
+ await summary.focus();await summary.press('Enter');
+ await page.mouse.move(10,10);
+ await page.waitForTimeout(250);
+ await expect(details).toContainText('已达成 2026-09-03');
+ await expect(details).toContainText('目标 2026-09-04');
+ await expect(details.locator('.workspace-summary-milestones')).toHaveAttribute('open','');
+ await page.getByRole('button',{name:'今天',exact:true}).focus();await expect(details).toHaveCount(0);
+ await title.focus();await details.locator('.workspace-summary-milestones summary').focus();
+ await page.keyboard.press('Escape');await expect(details).toHaveCount(0);
+});
+test('切换日期轴不恢复需求里程碑标记，窄屏保持固定行高与可见历史',{tag:'@responsive'},async({page},info)=>{
+ await setup(page);await openProgress(page);const surface=page.locator('.workspace-gantt-scroll'),row=surface.locator('[data-row-id="r1"]');
  const height=(await row.boundingBox())!.height;
  for(const viewport of [page.viewportSize()!,{width:390,height:844}]){
   await page.setViewportSize(viewport);
   for(const zoom of ['日','周','月']){
-   await page.locator('[aria-label="时间粒度"]').getByRole('button',{name:zoom,exact:true}).click();await expect(pin).toHaveAttribute('data-milestone-date','2026-09-03');
+   await page.locator('[aria-label="时间粒度"]').getByRole('button',{name:zoom,exact:true}).click();await expect(row.locator('[data-milestone-id]')).toHaveCount(0);
    expect((await row.boundingBox())!.height).toBe(height);
-   await pin.click();const dialog=page.getByRole('dialog',{name:'里程碑详情'});await expect(dialog).toBeVisible();const b=(await dialog.boundingBox())!;expect(b.x).toBeGreaterThanOrEqual(0);expect(b.x+b.width).toBeLessThanOrEqual(viewport.width+1);expect(b.y+b.height).toBeLessThanOrEqual(viewport.height+1);await page.keyboard.press('Escape');
+   await row.locator('.workspace-row-title').focus();const details=page.getByRole('tooltip');await details.locator('.workspace-summary-milestones summary').click();await expect(details).toContainText('已达成 2026-09-03');const b=(await details.boundingBox())!;expect(b.x).toBeGreaterThanOrEqual(0);expect(b.x+b.width).toBeLessThanOrEqual(viewport.width+1);expect(b.y+b.height).toBeLessThanOrEqual(viewport.height+1);await page.keyboard.press('Escape');
   }
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
  }
  await page.screenshot({path:info.outputPath('milestone-narrow.png')});
 });
-test('项目里程碑位于表头，需求达成标记只出现在所属需求行',async({page})=>{
+test('项目里程碑仍位于表头，需求行不再叠加达成标记',async({page})=>{
  await setup(page);await mockGanttReport(page,()=>ganttRequirements,()=> '2026-09-18',()=>milestones.map(m=>m.id==='project-ms'?{...m,achievedAt:'2026-09-09'}:m) as PathMilestone[]);await openProgress(page);
  const surface=page.locator('.workspace-gantt-scroll');await expect(surface.locator('.workspace-gantt-heading [data-milestone-id="project-ms"]')).toHaveAttribute('data-milestone-date','2026-09-11');
  await expect(surface.locator('.workspace-gantt-heading [data-milestone-actual="project-ms"]')).toHaveCount(1);
  await expect(surface.locator('.workspace-gantt-heading [data-milestone-id="m1"]')).toHaveCount(0);
- await expect(surface.locator('[data-row-id="r1"] [data-milestone-id="m1"]')).toHaveCount(1);await expect(surface.locator('[data-row-id="r2"] [data-milestone-id]')).toHaveCount(0);
+ await expect(surface.locator('[data-row-id="r1"] [data-milestone-id="m1"]')).toHaveCount(0);await expect(surface.locator('[data-row-id="r2"] [data-milestone-id]')).toHaveCount(0);
 });
-test('未排期需求只显示已达成标记，未达成目标与预测不扩大日期范围',async({page})=>{
+test('未排期需求不显示达成标记，目标与预测不扩大日期范围',async({page})=>{
  await mockGanttData(page);const row={...requirement,status:'not_started',plannedStart:null,plannedEnd:null,actualStart:null,actualEnd:null,observationEnd:null,workItems:[],progress:0,scheduleComplete:false};
  const items:PathMilestone[]=[{...milestones[0],id:'forecast-only',targetDate:null,achievedAt:null,forecastEnd:'2030-12-20',confirmationMode:'auto'},{...milestones[0],id:'target',targetDate:'2030-12-20',achievedAt:null,confirmationMode:'manual'},{...milestones[0],id:'actual',achievedAt:'2026-09-04',targetDate:null,confirmationMode:'auto'}];
  await mockGanttReport(page,()=>[row],()=> '2026-09-18',()=>items);await openProgress(page);
  const surface=page.locator('.workspace-gantt-scroll');await page.getByRole('button',{name:'适配全部',exact:true}).click();
- await expect(surface.locator('[data-row-id="r1"] [data-milestone-id]')).toHaveCount(1);await expect(surface.locator('[data-milestone-id="actual"]')).toHaveAttribute('data-milestone-date','2026-09-04');
+ await expect(surface.locator('[data-row-id="r1"] [data-milestone-id]')).toHaveCount(0);
  const dates=await surface.locator('[data-date]').evaluateAll(es=>es.map(e=>e.getAttribute('data-date')!));expect(dates.length).toBeGreaterThan(0);expect(dates.every(d=>d<'2027-01-01')).toBe(true);
  await expect(surface.locator('.gantt-date-actual,.gantt-date-plan,.gantt-date-delay')).toHaveCount(0);
 });
@@ -60,7 +78,7 @@ test('部分排期保留实际进度与达成记录，不画虚假延期或完�
  await mockGanttData(page);
  const partial={...requirement,title:'EPDS-DCIM-137【租户管理】',asOfDate:'2026-09-18',plannedStart:'2026-09-07',plannedEnd:'2026-09-11',scheduleComplete:false,plannedProgress:null,progress:24,progressGap:0,riskEvaluated:false,riskLevel:'low',riskReason:'缺少完整排期，暂无法评估风险',actualStart:'2026-09-07',observationEnd:'2026-09-18',workItems:requirement.workItems.map((w,i)=>({...w,status:'in_progress',progress:24,actualEnd:null,plannedStart:i?null:'2026-09-07',plannedEnd:i?null:'2026-09-11'}))};
  await mockGanttReport(page,()=>[partial],()=>partial.asOfDate,()=>[{...milestones[0],achievedAt:'2026-09-10',confirmationMode:'auto'}]);await page.route('**/api/requirements/r1',route=>route.fulfill({json:partial}));await openProgress(page);
- const row=page.locator('[data-row-id="r1"]');await expect(row.locator('.gantt-date-actual')).toHaveAttribute('data-end','2026-09-18');await expect(row.locator('.gantt-date-plan')).toHaveClass(/is-partial-plan/);await expect(row.locator('.gantt-date-delay,.gantt-date-deadline')).toHaveCount(0);await expect(row.locator('.gantt-progress-value')).toHaveText('24%');await expect(row.locator('[data-milestone-id="m1"]')).toHaveCount(1);
+ const row=page.locator('[data-row-id="r1"]');await expect(row.locator('.gantt-date-actual')).toHaveAttribute('data-end','2026-09-18');await expect(row.locator('.gantt-date-plan')).toHaveClass(/is-partial-plan/);await expect(row.locator('.gantt-date-delay,.gantt-date-deadline')).toHaveCount(0);await expect(row.locator('.gantt-progress-value')).toHaveText('24%');await expect(row.locator('[data-milestone-id="m1"]')).toHaveCount(0);
  await row.locator('.gantt-date-hitbox').focus();await expect(page.getByRole('tooltip')).toContainText('缺少');await expect(page.getByRole('tooltip')).not.toContainText('应达');await page.keyboard.press('Escape');
  await page.goto('/requirements/r1');await expect(page.locator('.requirement-overview')).toContainText('2 项待排期');await expect(page.locator('.requirement-overview')).not.toContainText('计划 0%');
 });
@@ -109,9 +127,9 @@ test('需求路径排期预览复用切面，独立里程碑和验收点不增�
   await page.screenshot({ path: info.outputPath('path-workspace.png') });
   await chart.screenshot({ path: info.outputPath('path-slices.png') });
 });
-test('里程碑标记在全部主题与减少动态效果下保持日期及几何位置',{tag:'@responsive'},async({page},info)=>{
- await setup(page);await openProgress(page);const row=page.locator('[data-row-id="r1"]'),pin=row.locator('[data-milestone-id="m1"]');
+test('项目里程碑标记在全部主题与减少动态效果下保持日期及几何位置',{tag:'@responsive'},async({page},info)=>{
+ await setup(page);await openProgress(page);const pin=page.locator('.workspace-gantt-heading [data-milestone-id="project-ms"]');
  const geometry=()=>pin.evaluate(e=>({left:(e as HTMLElement).style.left,top:getComputedStyle(e).top,width:e.getBoundingClientRect().width,height:e.getBoundingClientRect().height}));const before=await geometry();
- for(const theme of themes){await page.evaluate(value=>{localStorage.setItem('project-manage:theme',value);window.dispatchEvent(new StorageEvent('storage',{key:'project-manage:theme',newValue:value}));},theme.id);await expect(page.locator('html')).toHaveAttribute('data-theme',theme.id);expect(await geometry()).toEqual(before);await expect(pin).toHaveAttribute('data-milestone-date','2026-09-03');}
+ for(const theme of themes){await page.evaluate(value=>{localStorage.setItem('project-manage:theme',value);window.dispatchEvent(new StorageEvent('storage',{key:'project-manage:theme',newValue:value}));},theme.id);await expect(page.locator('html')).toHaveAttribute('data-theme',theme.id);expect(await geometry()).toEqual(before);await expect(pin).toHaveAttribute('data-milestone-date','2026-09-11');await expect(page.locator('.workspace-row-track [data-milestone-id]')).toHaveCount(0);}
  await page.screenshot({path:info.outputPath('milestone-night.png')});
 });

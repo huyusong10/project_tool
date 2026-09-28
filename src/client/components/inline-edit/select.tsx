@@ -24,6 +24,7 @@ export function InlineSelectCell<TRevision extends Revision = number>({
   renderValue,
   renderOption,
   reason,
+  showSaveFeedback,
 }: BaseProps<TRevision> & {
   value: string | null | undefined;
   options: InlineOption[];
@@ -31,6 +32,7 @@ export function InlineSelectCell<TRevision extends Revision = number>({
   renderValue?: (value: string, option?: InlineOption) => ReactNode;
   renderOption?: (option: InlineOption, selected: boolean) => ReactNode;
   reason?: EditReason;
+  showSaveFeedback?: boolean;
 }) {
   const currentValue = value || "";
   const anchorRef = useRef<HTMLDivElement>(null);
@@ -137,7 +139,7 @@ export function InlineSelectCell<TRevision extends Revision = number>({
     ? renderValue(currentValue, selected)
     : selected?.label || <span className="is-placeholder">{placeholder}</span>;
   return <div ref={anchorRef} className="inline-edit-anchor">
-    <EditableCell label={label} display={display} fullText={selected?.label || placeholder} open={open} disabled={disabled} state={feedback.state} error={feedback.error} displayMode={displayMode} className={className} onOpen={() => {
+    <EditableCell label={label} display={display} fullText={selected?.label || placeholder} open={open} disabled={disabled} state={feedback.state} error={feedback.error} showSaveFeedback={showSaveFeedback} displayMode={displayMode} className={className} onOpen={() => {
       if (feedback.state !== "error") {
         setPendingValue(null);
         setReasonText("");

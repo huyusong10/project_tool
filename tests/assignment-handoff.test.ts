@@ -176,4 +176,26 @@ it('主负责和协作者同时失效时，可以先移除旧协作者再交接�
   expect(rejected.statusCode).toBe(400);
 });
 
+for (const field of ['assigneeIds', 'collaboratorIds'] as const) it(`${field} 调整协作后，记录保存真实旧人员和姓名，负责人接手不丢失原分工`, async () => {
+  const { r, previous, next } = await fixture();
+  let work = r.workItems[0];
+  const assigned = await request('PATCH', '/api/work-items/' + work.id, { expectedVersion: work.version, collaboratorIds: [next.id] });
+  expect(assigned.statusCode, assigned.body).toBe(200);
+  const started = await request('POST', `/api/work-items/${work.id}/start`, { expectedVersion: assigned.json().version });
+  expect(started.statusCode, started.body).toBe(200);
+  work = (await detail(r.id)).workItems[0];
+  const removed = await request('PATCH', '/api/work-items/' + work.id, { expectedVersion: work.version, [field]: field === 'assigneeIds' ? [previous.id] : [] });
+  expect(removed.statusCode, removed.body).toBe(200);
+  let fresh = await detail(r.id);
+  expect(fresh.progressUpdates?.[0].content).toBe(`协作人员：${next.name} → 未设置`);
+  expect(fresh.workItems[0]).toMatchObject({ ownerId: previous.id, collaborators: [], status: work.status, progress: work.progress, actualStart: work.actualStart });
+  const restored = await request('PATCH', '/api/work-items/' + work.id, { expectedVersion: fresh.workItems[0].version, collaboratorIds: [next.id] });
+  expect(restored.statusCode, restored.body).toBe(200);
+  const handed = await request('PATCH', '/api/work-items/' + work.id, { expectedVersion: restored.json().version, ownerId: next.id });
+  expect(handed.statusCode, handed.body).toBe(200);
+  fresh = await detail(r.id);
+  expect(fresh.progressUpdates?.[0].content).toBe(`负责人：${previous.name} → ${next.name}；协作人员：${next.name} → 未设置`);
+  expect(fresh.workItems[0]).toMatchObject({ ownerId: next.id, collaborators: [], status: work.status, progress: work.progress, actualStart: work.actualStart });
+});
+
 

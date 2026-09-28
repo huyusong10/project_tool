@@ -267,6 +267,41 @@
       "when": 1789603300000,
       "tag": "0037_guest_browsing",
       "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "6",
+      "when": 1790000000000,
+      "tag": "0038_jira_manual_integration",
+      "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "6",
+      "when": 1790000000001,
+      "tag": "0039_jira_reference_only",
+      "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "6",
+      "when": 1790000000002,
+      "tag": "0040_jira_progress_management",
+      "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "6",
+      "when": 1790000000003,
+      "tag": "0041_jira_pr",
+      "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "6",
+      "when": 1790000000004,
+      "tag": "0042_jira_manual_confirmation",
+      "breakpoints": true
     }
   ]
 }

@@ -79,6 +79,31 @@ test('system management focuses on health and data safety', async ({ page }) => 
   await expect(page.getByText('/mcp', { exact: false })).toBeVisible();
 });
 
+test('健康检查定位结果并区分检查中、请求失败和实际异常', async ({ page }) => {
+  let release!: () => void;
+  const pending = new Promise<void>(resolve => { release = resolve; });
+  let state: 'pending' | 'failed' | 'abnormal' | 'normal' = 'pending';
+  await page.route('**/api/system/database-check', async route => {
+    if (state === 'pending') await pending;
+    if (state === 'failed') return route.fulfill({status:503,json:{error:'数据库暂时忙，请重新检查'}});
+    if (state === 'abnormal') return route.fulfill({json:{ok:false,message:'测试页结构异常',checkedAt:'2026-09-25T02:00:00.000Z',durationMs:12}});
+    return route.continue();
+  });
+  const panel=page.getByRole('article',{name:'数据库健康检查',exact:true});
+  try {
+    await page.goto('/system');await headerAction(page,'立即检查');
+    await expect(panel).toBeInViewport({ratio:1});await expect(panel).toBeFocused();
+    await expect(panel).toContainText('正在检查数据库…');await expect(panel).not.toContainText('数据库状态正常');
+    state='failed';release();await expect(panel).toContainText('本次检查未完成');await expect(panel).toContainText('数据库暂时忙，请重新检查');await expect(panel).not.toContainText('发现数据库异常');
+    state='abnormal';await headerAction(page,'立即检查');await expect(panel).toContainText('发现数据库异常');await expect(panel).toContainText('测试页结构异常');
+    await page.setViewportSize({width:390,height:844});
+    state='normal';await headerAction(page,'立即检查');await expect(panel).toBeInViewport({ratio:1});await expect(panel).toContainText('数据库状态正常');
+    await expect(panel).not.toContainText('测试页结构异常');await expect(panel).toContainText('检查时间');await expect(panel).toContainText('检查耗时');
+    expect(await panel.evaluate(el=>el.scrollWidth<=el.clientWidth+1)).toBe(true);
+    await page.reload();await expect(panel).toContainText('等待执行完整性检查');
+  } finally {release();}
+});
+
 test('backup and integrity check allow only one request at a time', async ({ page }) => {
   let releaseBackup!: () => void;
   let releaseCheck!: () => void;

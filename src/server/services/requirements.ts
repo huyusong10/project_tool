@@ -226,9 +226,12 @@ function readRequirement(id: string, includeDeleted = false, withPathAnalysis = 
   const progressUpdates = rows(`SELECT u.id, u.requirement_id AS requirementId, u.work_item_id AS workItemId,
     w.title AS workItemTitle, u.percent, u.work_item_percent AS workItemPercent, u.content,
     u.event_type AS eventType, u.supersedes_id AS supersedesId, u.created_by_account_id AS createdByAccountId,
-    a.username AS createdByName, u.created_at AS createdAt, u.updated_at AS updatedAt
+    a.username AS createdByName, u.created_at AS createdAt, u.updated_at AS updatedAt,
+    COALESCE(js.state,'pending') AS jiraSyncState,js.pr_id AS jiraPrId,js.comment_id AS jiraCommentId,js.synced_at AS jiraSyncedAt,
+    js.manual_account_id AS jiraManualAccountId,js.manual_reason AS jiraManualReason,js.manual_url AS jiraManualUrl
     FROM progress_updates u LEFT JOIN work_items w ON w.id=u.work_item_id
     LEFT JOIN accounts a ON a.id=u.created_by_account_id
+    LEFT JOIN jira_progress_sync js ON js.progress_id=u.id
     WHERE u.requirement_id=? ORDER BY u.created_at DESC, u.rowid DESC`, id);
   const issueCounts = row<{ active: number; overdue: number }>(`SELECT COUNT(*) AS active,
     COALESCE(SUM(CASE WHEN due_date IS NOT NULL AND business_day_delta(due_date, ?)>0 THEN 1 ELSE 0 END), 0) AS overdue

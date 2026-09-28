@@ -38,7 +38,7 @@ export function projectPathGraph(a:PathAnalysis, focus?:string, attention=false)
   links.forEach(e=>{keep.add(e.source);keep.add(e.target);});
   return {cards:[...keep].map(id=>{
     const n=nodeMap.get(id)!, req=a.requirements.find(r=>r.id===n.requirementId), external=!internal.has(id);
-    return {id,requirementId:n.requirementId||'',workItemId:n.workItemId,kind:n.kind,progress:n.progress,plannedEnd:n.plannedEnd,workStage:n.workStage,featureId:req?.featureId||undefined,featureName:req?.featureName,title:n.kind==='start'?'需求开始条件':n.kind==='acceptance'?'需求验收':n.title,subtitle:external?`外部 · ${req?.title||'历史交付'}`:n.kind==='work'?n.ownerName||'未分派':req?.title||'历史交付',status:n.status,risk:a.risks[n.requirementId!]?.riskEvaluated?n.riskLevel:'pending',
+    return {id,requirementId:n.requirementId||'',workItemId:n.workItemId,kind:n.kind,progress:n.progress,plannedEnd:n.plannedEnd,workStage:n.workStage,featureId:req?.featureId||undefined,featureName:req?.featureName,title:n.kind==='start'?'需求开始条件':n.kind==='acceptance'?'需求完成':n.title,subtitle:external?`外部 · ${req?.title||'历史交付'}`:n.kind==='work'?n.ownerName||'未分派':req?.title||'历史交付',status:n.status,risk:a.risks[n.requirementId!]?.riskEvaluated?n.riskLevel:'pending',
       forecast:n.forecastEnd,floatDays:n.floatDays,critical:n.critical,unknown:n.unknownReasons.length>0,external,hiddenCount:external?a.edges.filter(e=>(e.source===id||e.target===id)&&!links.includes(e)).length:0};
   }), links:links.map(e=>{const d=a.dependencies.find(d=>d.id===e.dependencyId);return {...e,label:e.dependencyId ? '交付前置' : undefined,description:d?relationDescription(a,d):undefined,dependencyIds:e.dependencyId?[e.dependencyId]:[]};})};
 }

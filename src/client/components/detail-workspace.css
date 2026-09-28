@@ -230,6 +230,9 @@
 @layer application { .work-order-menu { display: grid; gap: 4px; } }
 
 @layer application {
+@container (max-width:760px){
+ .work-arrangement-row:has(.work-arrangement-heading) .work-arrangement-fields {grid-template-columns:repeat(2,minmax(0,1fr))}
+}
 @container (max-width:400px){
  .work-create-row .form-grid {grid-template-columns:1fr}
  .work-create-heading {display:grid;grid-template-columns:24px minmax(0,1fr)}

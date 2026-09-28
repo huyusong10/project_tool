@@ -14,14 +14,23 @@ import type { PeopleConcurrency, Person } from "../types";
 import { addCalendarDays } from "../../shared/domain";
 import { EmptyState } from "./Feedback";
 import { isTemporaryReadError } from '../api';
+import { isValidIsoDate } from '../../shared/workday';
+import { ConcurrencyDayDetails } from './ConcurrencyDayDetails';
 
 export function ConcurrencyPanel({ people }: { people: Person[] }) {
   const client = useQueryClient();
   const { selectedProjectId } = useProjects();
   const { businessDate } = useBusinessDate();
-  const [viewParams, setViewParams] = usePageSearchParams(['analysisPersonId', 'analysisJobTitle']);
+  const [viewParams, setViewParams] = usePageSearchParams(['analysisPersonId', 'analysisJobTitle', 'concurrencyPersonId', 'concurrencyDate']);
   const personId = viewParams.get('analysisPersonId') || '';
   const jobTitle = viewParams.get('analysisJobTitle') || '';
+  const detailPersonId = viewParams.get('concurrencyPersonId') || '', detailDate = viewParams.get('concurrencyDate') || '';
+  const inspectDay = (personId?: string, date?: string) => setViewParams(current => {
+    const next = new URLSearchParams(current);
+    if (personId && date) { next.set('concurrencyPersonId', personId); next.set('concurrencyDate', date); }
+    else { next.delete('concurrencyPersonId'); next.delete('concurrencyDate'); }
+    return next;
+  });
   const setFilters = (nextJobTitle: string, nextPersonId: string) => {
     setViewParams(current => {
       const next = new URLSearchParams(current);
@@ -155,15 +164,16 @@ export function ConcurrencyPanel({ people }: { people: Person[] }) {
               return <th className={`${date === asOfDate ? "is-today" : ""}${parsed.getDay() === 1 && date !== asOfDate ? " is-week-start" : ""}`} key={date}><span>{["日", "一", "二", "三", "四", "五", "六"][parsed.getDay()]}</span>{date.slice(5).replace("-", "/")}</th>;
             })}</tr></thead>
             <tbody>
-              {matrixData.people.map((person) => <tr key={person.id}><td><strong title={person.name}>{person.name}</strong><small title={person.jobTitle || "岗位未设置"}>{person.jobTitle || "—"}{person.externalCurrentCount ? ` · 外部${person.externalCurrentCount}项` : ""}</small></td>{person.days.map((day) => <td className={parseISO(day.date).getDay() === 1 && day.date !== asOfDate ? "is-week-start" : ""} key={day.date}><span className={`heat heat-${Math.min(day.count, 3)}`} title={day.items.map((item) => `${item.requirementTitle} · ${item.title}`).join("\n")}>{day.count || ""}</span></td>)}</tr>)}
+              {matrixData.people.map((person) => <tr key={person.id}><td><strong title={person.name}>{person.name}</strong><small title={person.jobTitle || "岗位未设置"}>{person.jobTitle || "—"}{person.externalCurrentCount ? ` · 外部${person.externalCurrentCount}项` : ""}</small></td>{person.days.map((day) => <td className={parseISO(day.date).getDay() === 1 && day.date !== asOfDate ? "is-week-start" : ""} key={day.date}>{day.count > 0 ? <Button variant="soft" tone={day.count >= 3 ? 'danger' : day.count === 2 ? 'warning' : 'success'} size="small" aria-label={`${person.name} ${day.date} ${day.count}项工作`} title="查看当天工作" onClick={() => inspectDay(person.id, day.date)}>{day.count}</Button> : <span className="heat heat-0" />}</td>)}</tr>)}
               {!matrixData.people.length && !analysis.isLoading && <tr className="human-empty-row"><td colSpan={matrixData.dates.length + 1}><div className="human-empty-message" style={{width:matrixViewportWidth||undefined}}><strong>当前区间暂无安排</strong><span>向右加载后续日期，或调整人员和岗位筛选。</span></div></td></tr>}
             </tbody>
           </table>
           <Button variant="secondary" size="small" className="human-next-window" disabled={analysis.isFetchingNextPage} onClick={() => void analysis.fetchNextPage()}>{analysis.isFetchingNextPage ? "加载中" : "加载后续7天"}</Button>
         </div>
       </div>
-      <footer><span><i className="heat heat-1" />1项 正常</span><span><i className="heat heat-2" />2项 预警</span><span><i className="heat heat-3" />3项及以上 高并发</span><small>横向拖动查看后续日期</small></footer>
+      <footer><span><i className="heat heat-1" />1项 正常</span><span><i className="heat heat-2" />2项 预警</span><span><i className="heat heat-3" />3项及以上 高并发</span><small>点击数量查看工作 · 横向拖动查看后续日期</small></footer>
     </div>
     </>}
+    {detailPersonId && isValidIsoDate(detailDate) && <ConcurrencyDayDetails key={detailPersonId + ':' + detailDate} projectId={selectedProjectId} personId={detailPersonId} date={detailDate} onClose={() => inspectDay()} />}
     </div>;
 }

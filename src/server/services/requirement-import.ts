@@ -55,7 +55,10 @@ function prepare(projectId:string,pkg:IntakePackage,actor:Actor) {
       for(const w of r.workItems)changes.changes.entities!.push({entity:'work',op:'create',id:entityId(r.key,w.key),requirementId:entityId(r.key),data:{title:w.title,referenceLinks:w.referenceLinks,workStage:w.workStage,ownerId:w.ownerId,plannedStart:w.plannedStart,plannedEnd:w.plannedEnd,durationDays:w.durationDays??null}});
     }
     if(!r.ownerId&&r.action==='create')warnings.push(r.title+'：未分配负责人');
-    if(!r.plannedStart||!r.plannedEnd)warnings.push(r.title+'：计划日期尚未补齐');
+    if(r.action==='create'&&r.workItems.length){
+      if(r.plannedStart||r.plannedEnd)warnings.push(r.title+'：需求计划由工作项汇总，需求日期不会分配到工作项');
+      for(const w of r.workItems)if(!w.plannedStart||!w.plannedEnd)warnings.push(r.title+' / '+w.title+'：计划日期尚未补齐');
+    }else if(r.action==='create'&&(!r.plannedStart||!r.plannedEnd))warnings.push(r.title+'：计划日期尚未补齐');
   }
   const endpoint=(rKey:string,work?:string)=>{
     const r=requirements.get(rKey);
@@ -87,6 +90,10 @@ function prepare(projectId:string,pkg:IntakePackage,actor:Actor) {
       }).filter(Boolean);
       errors.push((labels.length?labels.join('、')+'：':'')+(error instanceof Error?error.message:'无法预览需求'));
     }
+  }
+  if(core){
+    const schedules=new Map(core.analysis.requirements.map(r=>[r.id,r.scheduleComplete]));
+    for(const r of pkg.requirements)if(r.action==='update'&&schedules.get(r.existingId!)===false)warnings.push(r.title+'：计划日期尚未补齐');
   }
   if(!pkg.requirements.some(r=>r.action!=='skip'))errors.push('没有选择要导入的需求');
   const preview:ImportPreview={expectedRevision:revision,previewToken:hash({projectId,pkg,revision,core:core?.previewToken}),package:pkg,warnings:[...new Set(warnings)],errors:[...new Set(errors)],existingMatches,differences:core?.differences||null,counts:{requirements:pkg.requirements.filter(r=>r.action==='create').length,updated:pkg.requirements.filter(r=>r.action==='update').length,workItems:pkg.requirements.filter(r=>r.action==='create').reduce((n,r)=>n+r.workItems.length,0)}};
@@ -139,14 +146,17 @@ export function applyRequirementImport(projectId:string,raw:unknown,actor:Actor)
         let phaseId:string|null|undefined;
         if(r.phase){if(!featureId)fail('指定 Phase 时必须同时指定特性');const p=getDatabaseContext().sqlite.prepare('SELECT id FROM feature_phases WHERE feature_id=? AND name=?').get(featureId,r.phase) as {id:string}|undefined;phaseId=p?.id||randomUUID();if(!p){if(getDatabaseContext().sqlite.prepare("SELECT 1 FROM features WHERE id=? AND kind='other'").get(featureId))fail('其他需求不能新建 Phase');const now=new Date().toISOString();getDatabaseContext().sqlite.prepare('INSERT INTO feature_phases(id,project_id,feature_id,name,created_at,updated_at) VALUES(?,?,?,?,?,?)').run(phaseId,projectId,featureId,r.phase,now,now);}}
         else if(r.phase===null)phaseId=null;
-        const before=getDatabaseContext().sqlite.prepare('SELECT feature_id AS featureId,phase_id AS phaseId FROM requirements WHERE id=?').get(id);
+        const organization=getDatabaseContext().sqlite.prepare(`SELECT r.feature_id AS featureId,r.phase_id AS phaseId,CASE WHEN f.kind='other' THEN '其他需求' ELSE f.name END AS featureName,p.name AS phaseName
+          FROM requirements r LEFT JOIN features f ON f.id=r.feature_id LEFT JOIN feature_phases p ON p.id=r.phase_id WHERE r.id=?`);
+        const before=organization.get(id);
         persistOrganization(id,projectId,{featureId,phaseId,reason:r.reason});
-        const after=getDatabaseContext().sqlite.prepare('SELECT feature_id AS featureId,phase_id AS phaseId FROM requirements WHERE id=?').get(id);if(JSON.stringify(before)!==JSON.stringify(after))recordAudit(actor,'update','requirement',id,'导入调整归属：'+JSON.stringify({before,after,reason:r.reason}),projectId);
+        const after=organization.get(id);if(JSON.stringify(before)!==JSON.stringify(after))recordAudit(actor,'update','requirement',id,'导入调整归属：'+JSON.stringify({title:r.title,before,after,reason:r.reason}),projectId);
       }
     }
     const result:ImportReceipt={status:'applied',batchId:input.batchId,createdAt:new Date().toISOString(),requirementIds};
     getDatabaseContext().sqlite.prepare('INSERT INTO requirement_import_receipts(batch_id,project_id,actor_id,content_hash,result,created_at) VALUES(?,?,?,?,?,?)').run(input.batchId,projectId,actorKey(actor),contentHash,JSON.stringify(result),result.createdAt);
-    recordAudit(actor,'import','project',projectId,'导入需求：'+prepared.preview.counts.requirements+' 个新需求');
+    const counts=prepared.preview.counts;
+    recordAudit(actor,'import','project',projectId,`导入需求：新增 ${counts.requirements} 个，更新 ${counts.updated} 个，新增工作项 ${counts.workItems} 个`);
     return result;
   }).immediate();
 }

@@ -8,6 +8,68 @@ const view=async(page:Page,name:string)=>toolbar(page).getByRole('button',{name,
 const create=async(page:Page,name:string)=>{await toolbar(page).getByRole('button',{name:'新建对象',exact:true}).click();await page.getByRole('menu',{name:'新建对象'}).getByRole('button',{name,exact:true}).click();};
 const url=(projectId:string,scopeType:string,scopeId:string,workspaceView='progress')=>'/?'+new URLSearchParams({projectId,workspaceView,scopeType,scopeId});
 
+test('新建需求提交前核对工作日排期与 Phase 目标，倒排结果保存后保持一致', async ({page}) => {
+  const f = await phaseFixture(page);
+  const phase = f.phases[2];
+  const update = await page.request.post(`${f.base}/features/${f.feature.id}/phases`, {data:{
+    id:phase.id, expectedVersion:phase.version, name:phase.name, targetDate:'2026-09-30',
+  }});
+  expect(update.ok(), await update.text()).toBe(true);
+  const response = await page.request.post('/api/templates', {data:{projectId:f.projectId, name:'节假日排期预览', dependencyMode:'legacy', items:[
+    {title:'澄清', durationDays:2, startOffsetDays:0, sortOrder:0},
+    {title:'实现', durationDays:2, startOffsetDays:2, sortOrder:1},
+    {title:'交付点', kind:'milestone', durationDays:0, startOffsetDays:8, sortOrder:2},
+  ]}});
+  expect(response.ok(), await response.text()).toBe(true);
+  const template = await response.json();
+  await page.goto(url(f.projectId,'phase',phase.id,'list')+'&q=DCIM&detailId=phase:'+phase.id);
+  const phaseDetail=page.getByRole('dialog',{name:phase.name,exact:true});
+  await phaseDetail.getByRole('button',{name:'新建需求',exact:true}).click();
+  const form = page.getByRole('dialog',{name:'新建需求',exact:true});
+  await form.getByLabel('需求标题',{exact:true}).fill('提交前核对排期');
+  await form.getByRole('button',{name:/流程与排期/}).click();
+  await chooseOption(form.getByRole('combobox',{name:'流程设计',exact:true}),template.id);
+  await form.getByLabel('计划开始',{exact:true}).fill('2026-09-28');
+  const preview = form.getByRole('region',{name:'排期预览'});
+  await expect(preview).toContainText('2026-09-28 ～ 2026-10-08');
+  await expect(preview).toContainText('2 个工作项');
+  await expect(preview).toContainText('计划完成晚于 Phase 目标 2026-09-30');
+  await form.getByRole('radio',{name:/按截止日期倒排/}).click();
+  await expect(preview).toHaveCount(0);
+  await form.getByLabel('截止日期',{exact:true}).fill('2026-10-01');
+  await expect(form.getByRole('alert')).toContainText('截止日期需为工作日');
+  await expect(preview).toHaveCount(0);
+  await form.getByLabel('截止日期',{exact:true}).fill('2026-09-30');
+  await expect(preview).toContainText('2026-09-24 ～ 2026-09-30');
+  await expect(preview).not.toContainText('晚于');
+  await form.getByRole('button',{name:'关闭',exact:true}).click();
+  await phaseDetail.getByRole('button',{name:'新建需求',exact:true}).click();
+  await form.getByRole('button',{name:/流程与排期/}).click();
+  await expect(preview).toContainText('2026-09-24 ～ 2026-09-30');
+  await form.getByRole('button',{name:'创建需求',exact:true}).click();
+  await expect(form).toHaveCount(0);
+  const requirements = await (await page.request.get('/api/requirements?projectId='+f.projectId)).json();
+  const saved = requirements.find((item:{title:string}) => item.title === '提交前核对排期');
+  expect(saved).toMatchObject({phaseId:phase.id, plannedStart:'2026-09-24', plannedEnd:'2026-09-30'});
+  const detail = await (await page.request.get('/api/requirements/'+saved.id)).json();
+  expect(detail.workItems).toHaveLength(2);
+  const createdDetail=page.getByRole('dialog',{name:'提交前核对排期',exact:true});
+  await expect(createdDetail.getByRole('tab',{name:'概况',exact:true})).toHaveAttribute('aria-selected','true');
+  await expect(page).toHaveURL(new RegExp('detailId='+saved.id));
+  await createdDetail.getByRole('button',{name:'返回'+phase.name,exact:true}).click();
+  await expect(phaseDetail.getByRole('tab',{name:'概况',exact:true})).toHaveAttribute('aria-selected','true');
+  await expect(form).toHaveCount(0);
+  await page.reload();await expect(phaseDetail.getByRole('button',{name:'新建需求',exact:true})).toBeVisible();
+  await expect(form).toHaveCount(0);
+  await phaseDetail.getByRole('button',{name:'关闭',exact:true}).click();
+  await expect(page.getByRole('searchbox',{name:'筛选清单',exact:true})).toHaveValue('DCIM');
+  await view(page,'进展表');
+  await page.reload();
+  await expect(page.getByRole('row').filter({has:page.getByRole('button',{name:'提交前核对排期',exact:true})}))
+    .toContainText('提交前核对排期');
+  await expect(page.getByRole('cell',{name:/未开始；计划 2026-09-24 至 2026-09-30/})).toBeVisible();
+});
+
 test('空对象在进展表可见，特性内筛选继承当前位置，视图切换保留创建入口',async({page})=>{
   const f=await phaseFixture(page);
   const empty=(await(await page.request.post(f.base+'/features',{data:{name:'设备接入（SBI）'}})).json()).features.find((x:{name:string})=>x.name==='设备接入（SBI）');
@@ -61,11 +123,22 @@ test('已有需求可就地创建 Phase，保存前不移动；请求结果未�
   expect((await(await page.request.get('/api/requirements/'+r.id)).json()).phaseName).toBe('Phase 4');
 });
 
-test('关系图入口直达交付范围和导入，导入预选当前特性，详情操作不随页签消失',async({page},info)=>{
+test('关系图特性详情创建后可返回，导入预选当前特性，详情操作不随页签消失',async({page},info)=>{
   const f=await phaseFixture(page);await page.goto(url(f.projectId,'feature',f.feature.id,'graph'));await headerAction(page,'交付范围');
   const detail=page.getByRole('dialog',{name:f.feature.name,exact:true});await expect(detail.getByRole('tab',{name:'交付范围'})).toHaveAttribute('aria-selected','true');
   await expect(page.getByRole('dialog',{name:'交付资料'})).toHaveCount(0);
   for(const tab of ['概况','资料','记录']){await detail.getByRole('tab',{name:tab,exact:true}).click();await expect(detail.getByRole('button',{name:'新建 Phase',exact:true})).toBeVisible();}
+  await detail.getByRole('button',{name:'新建需求',exact:true}).click();
+  const form=page.getByRole('dialog',{name:'新建需求',exact:true});
+  await form.getByLabel('需求标题',{exact:true}).fill('特性详情创建结果');
+  await form.getByRole('button',{name:'创建需求',exact:true}).click();
+  const created=page.getByRole('dialog',{name:'特性详情创建结果',exact:true});
+  await expect(created.getByRole('tab',{name:'概况',exact:true})).toHaveAttribute('aria-selected','true');
+  await created.getByRole('button',{name:'返回'+f.feature.name,exact:true}).click();
+  await expect(detail.getByRole('tab',{name:'记录',exact:true})).toHaveAttribute('aria-selected','true');
+  await expect(form).toHaveCount(0);
+  await page.reload();await expect(detail.getByRole('button',{name:'新建需求',exact:true})).toBeVisible();
+  await expect(form).toHaveCount(0);
   await page.screenshot({path:info.outputPath('feature-actions.png'),animations:'disabled'});
   await detail.getByRole('button',{name:'关闭',exact:true}).click();await headerAction(page,'导入需求');
   await expect(page.getByRole('heading',{name:'导入需求',exact:true})).toBeVisible();await page.getByRole('textbox',{name:'原始需求'}).fill('导入入口测试\n确认归属预选');await page.getByRole('button',{name:'整理需求',exact:true}).click();

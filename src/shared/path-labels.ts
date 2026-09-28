@@ -2,7 +2,7 @@ import { dependencySource, dependencyTarget, type Dependency, type PathAnalysis 
 export function endpointName(data: PathAnalysis, id: string, qualified = true): string {
   const node = data.nodes.find(n => n.id === id);
   if (!node) return '已失效交付点';
-  const name = node.kind === 'acceptance' ? '整需求验收' : node.kind === 'start' ? '整个需求开始' : node.title;
+  const name = node.kind === 'acceptance' ? '整个需求完成' : node.kind === 'start' ? '整个需求开始' : node.title;
   const requirement = data.requirements.find(r => r.id === node.requirementId);
   return qualified && requirement ? `${requirement.title} · ${name}` : name;
 }
@@ -12,8 +12,8 @@ export function relationDescription(data: PathAnalysis, relation: Dependency): s
 export function relationCaption(data: PathAnalysis, relation: Dependency): string {
   const specificSource = relation.sourceWorkItemId || relation.sourceMilestoneId;
   const specificTarget = relation.targetWorkItemId || relation.targetMilestoneId;
-  if (!specificSource && !specificTarget) return '验收后开始';
-  const source = specificSource ? endpointName(data, specificSource, false) : '验收';
+  if (!specificSource && !specificTarget) return '需求完成后开始';
+  const source = specificSource ? endpointName(data, specificSource, false) : '需求完成';
   return specificTarget ? `${source} → ${endpointName(data, specificTarget, false)}` : `${source}后开始`;
 }
 export function compactRelationCaption(label: string): string {

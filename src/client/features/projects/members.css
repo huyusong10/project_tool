@@ -1,5 +1,5 @@
 @layer application {
-.project-members-panel { min-height: 240px; --panel-state-min-height: 150px; }.project-members-panel > header { border-bottom: 1px solid var(--divider); }
+.project-members-panel { min-height: 240px; --panel-state-min-height: 150px; }.project-members-panel > header { flex-wrap: wrap; border-bottom: 1px solid var(--divider); }
 .project-member-header-actions { display: flex; align-items: center; gap: 10px; }
 .project-member-count { padding: 4px 9px; border-radius: 999px; color: var(--text-muted); background: var(--bg-hover); font-size: 12px; font-weight: 650; white-space: nowrap; }
 .project-member-list { max-height: 480px; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: var(--border-strong) transparent; }

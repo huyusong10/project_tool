@@ -12,5 +12,6 @@ test-results/
 *.db
 *.db-shm
 *.db-wal
+*.jira-key
 *.log
 .preview/

@@ -17,7 +17,7 @@ test('工作项拖拽可取消，完成需求禁止新增但管理员可维护�
   await page.screenshot({path:info.outputPath('drag-shadow.png')});await page.keyboard.press('Escape');await page.mouse.up();await expect(ghost).toHaveCount(0);await expect(modal).toBeVisible();
   const complete=await page.request.post('/api/work-items/'+f.testing.workItems[1].id+'/complete',{data:{expectedVersion:f.testing.workItems[1].version}});expect(complete.ok(),await complete.text()).toBe(true);
   await page.reload();await expect(modal.locator(':scope > header')).toContainText('已完成');await expect(modal.getByRole('button',{name:'添加工作项',exact:true})).toBeDisabled();await expect(handle).toBeEnabled();await expect(modal.getByRole('status',{name:/拖动手柄排序/})).toContainText('支持键盘操作');
-  await expect(rows.first().getByRole('button',{name:'修正实际日期',exact:true})).toBeVisible();await expect(rows.first().getByRole('button',{name:'重开\/返工',exact:true})).toBeVisible();await expect(modal.getByRole('button',{name:'更多工作项操作'})).toHaveCount(0);
+  await expect(rows.first().getByRole('button',{name:'修正日期与说明',exact:true})).toBeVisible();await expect(rows.first().getByRole('button',{name:'重开\/返工',exact:true})).toBeVisible();await expect(modal.getByRole('button',{name:'更多工作项操作'})).toHaveCount(0);
   await page.screenshot({path:info.outputPath('completed-work-list.png')});
 });
 

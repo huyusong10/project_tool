@@ -6,6 +6,7 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, expect, it } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 import type { RequirementRecord, WorkItemRecord } from '../src/server/services/requirements';
+import type { Requirement } from '../src/client/types';
 import { addCalendarDays, todayIso } from '../src/shared/domain';
 
 const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'history-completion-'));
@@ -52,6 +53,30 @@ afterAll(async () => {
   const { sqlite } = await import('./support/database');
   if (sqlite.open) sqlite.close();
   fs.rmSync(directory, { recursive: true, force: true });
+});
+
+it('重新排期保存前后日期和说明，重复提交不追加记录，说明不阻止未执行需求重选流程', async () => {
+  const before = await createHistory();
+  const changed = await post(`/api/requirements/${before.id}/reschedule`, {
+    expectedVersion: before.version, scheduleMode: 'start', plannedStart: '2026-09-22', reason: '客户调整交付日期。',
+  });
+  expect(changed.statusCode, changed.body).toBe(200);
+  const after = changed.json<Requirement>();
+  expect(after.progressUpdates).toHaveLength(1);
+  expect(after.progressUpdates![0]).toMatchObject({ eventType: 'note', workItemId: null, percent: before.progress, createdByName: 'admin' });
+  const content = after.progressUpdates![0].content;
+  for (const value of [before.plannedStart, before.plannedEnd, after.plannedStart, after.plannedEnd, '客户调整交付日期。']) expect(content).toContain(value!);
+  for (const item of after.workItems!) expect(item).toMatchObject({ status: 'not_started', progress: 0, actualStart: null, actualEnd: null });
+  const repeated = await post(`/api/requirements/${before.id}/reschedule`, { expectedVersion: after.version, scheduleMode: 'start', plannedStart: after.plannedStart, reason: '相同日期不重复记事' });
+  expect(repeated.statusCode, repeated.body).toBe(200);
+  expect(repeated.json().progressUpdates).toEqual(after.progressUpdates);
+  const stale = await post(`/api/requirements/${before.id}/reschedule`, { expectedVersion: before.version, scheduleMode: 'start', plannedStart: '2026-09-23', reason: '过期修改' });
+  expect(stale.statusCode).toBe(409);
+  expect((await app.inject({ url: `/api/requirements/${before.id}`, headers: { cookie } })).json<Requirement>().progressUpdates).toEqual(after.progressUpdates);
+  const nextTemplate = await post('/api/templates', { projectId, name: '排期后重选流程', items: [{ title: '新工作', startOffsetDays: 0, durationDays: 1, sortOrder: 0 }] });
+  const replaced = await post(`/api/requirements/${before.id}/reselect-template`, { expectedVersion: after.version, scheduleMode: 'start', templateId: nextTemplate.json().id, plannedStart: '2026-09-22', confirmTemplateReset: true });
+  expect(replaced.statusCode, replaced.body).toBe(200);
+  expect(replaced.json().progressUpdates).toEqual(after.progressUpdates);
 });
 
 it('按计划补录工作项、整条需求原子完成，重复提交不生成记录，按工作日期计入完成趋势', async () => {
