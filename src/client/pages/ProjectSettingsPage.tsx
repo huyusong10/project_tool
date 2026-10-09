@@ -1,4 +1,5 @@
 import { readRecheckFlag, persistRecheckFlag } from '../core/write-recheck';
+import { useIssueTrackingOnly } from '../application-mode';
 import * as projectsApi from '../features/projects/api';
 import * as archivesApi from '../features/archives/api';
 import * as peopleApi from '../features/people/api';
@@ -36,6 +37,7 @@ function readProjectMembersRecheck(accountKey: string, projectId: string) { retu
 function persistProjectMembersRecheck(accountKey: string, projectId: string, required: boolean) { if(projectId) persistRecheckFlag(`project-manage:project-members-recheck:${accountKey}:${projectId}`, required); }
 
 export function ProjectSettingsPage() {
+  const issueTrackingOnly = useIssueTrackingOnly();
   const { session } = useSession();
   const { projects, selectedProjectId } = useProjects();
   const recheckAccountKey = session.accountId || session.username || "guest";
@@ -49,7 +51,7 @@ export function ProjectSettingsPage() {
   }, [selectedProjectId]);
   const leaveSettingsAfterHandoff = (input: { projectId: string; personId: string; role: ProjectMemberRole }) => {
     if (activeProject.current !== input.projectId || input.personId !== session.personId || session.globalRole === 'admin' || input.role === 'manager') return false;
-    toast.success(`你在此项目的角色已更新为${input.role === 'viewer' ? '观察者' : '项目成员'}，已返回项目空间`);
+    toast.success(`你在此项目的角色已更新为${input.role === 'viewer' ? '观察者' : '项目成员'}，已返回${issueTrackingOnly ? '问题跟踪' : '项目空间'}`);
     navigate('/?projectId=' + encodeURIComponent(input.projectId), { replace: true });
     return true;
   };
@@ -172,13 +174,13 @@ export function ProjectSettingsPage() {
   const projectArchivesQuery = useResourceQuery<Archives>(
     [...keys.projectArchives, selectedProjectId],
     signal => archivesApi.archivesQuery<Archives>(encodeURIComponent(selectedProjectId), { signal }),
-    canManage && Boolean(selectedProjectId),
+    !issueTrackingOnly && canManage && Boolean(selectedProjectId),
   );
   const projectArchives = projectArchivesQuery.data;
   const membersPagination = useListPagination({ items: members, id: 'members', ready: Boolean(membersQuery.data), loading: membersQuery.isFetching, disabled: memberMutationBusy });
   const archiveItems = [...(projectArchives?.requirements || []).map(item => ({...item, entity: 'requirements' as const, type: '需求'})), ...(projectArchives?.templates || []).map(item => ({...item, entity: 'templates' as const, type: '流程'}))].sort((a, b) => b.deletedAt.localeCompare(a.deletedAt) || a.id.localeCompare(b.id));
   const archivesPagination = useListPagination({ items: archiveItems, id: 'archives', ready: Boolean(projectArchives), loading: projectArchivesQuery.isFetching });
-  usePageScrollPosition(Boolean(membersQuery.data) && (!canManage || Boolean(projectArchives)));
+  usePageScrollPosition(Boolean(membersQuery.data) && (issueTrackingOnly || !canManage || Boolean(projectArchives)));
   const restore = useMutation({
     mutationFn: ({ entity, id, expectedDeletedAt }: { projectId: string; entity: "requirements" | "templates"; id: string; expectedDeletedAt: string }) => archivesApi.ResourceRestore(entity, id, { method: "POST", body: jsonBody({ expectedDeletedAt }) }),
     onSuccess: (_saved, input) => {
@@ -222,12 +224,12 @@ export function ProjectSettingsPage() {
     restore.mutate({ projectId: selectedProjectId, entity, id, expectedDeletedAt });
   };
   return <>
-    <PageHeader title="项目设置" actions={project&&canManage?<Button variant="primary" className="primary-button" onClick={() => setEditing(true)}><Edit3 size={15} />编辑项目</Button>:null} />
+    <PageHeader title={issueTrackingOnly ? '项目成员' : '项目设置'} actions={!issueTrackingOnly&&project&&canManage?<Button variant="primary" className="primary-button" onClick={() => setEditing(true)}><Edit3 size={15} />编辑项目</Button>:null} />
     <div className="page-content">
       {!project ? <EmptyState title="暂无可访问项目" detail="请联系管理员分配项目权限。" /> : <>
-        <section className="panel project-settings-summary">
+        {!issueTrackingOnly && <section className="panel project-settings-summary">
           <header><div><h2>{project.name}</h2><p>{project.plannedStart || "未设置开始"} — {project.plannedEnd || "未设置完成"}</p></div><StatusBadge kind="project" value={project.status} /></header>
-        </section>
+        </section>}
         <section className="panel project-members-panel paged-panel">
           <header>
             <div><h2>项目成员</h2><p>在当前项目内配置项目经理、项目成员和观察者</p></div>
@@ -264,7 +266,7 @@ export function ProjectSettingsPage() {
           <Pagination {...membersPagination.props} label="项目成员分页" />
           {(setRole.error || remove.error) && <p className="form-error">{(setRole.error || remove.error)?.message}</p>}
         </section>
-        {canManage && <section className="panel project-members-panel paged-panel">
+        {!issueTrackingOnly && canManage && <section className="panel project-members-panel paged-panel">
           <header><div><h2>项目归档</h2><p>恢复当前项目已归档的需求或流程</p></div></header>
           {projectArchiveNeedsRecheck && <div role="alert" className="warning-banner">项目归档恢复结果待核对，当前归档事实可能已变化，本页面不会重复提交。<Button busy={(projectArchivesQuery.isFetching)} aria-label={projectArchivesQuery.isFetching ? "读取中…" : "重新读取项目归档"} variant="secondary" className="ghost-button" disabled={projectArchivesQuery.isFetching} onClick={() => void reloadProjectArchives()}>{"重新读取项目归档"}</Button></div>}
           {projectArchivesQuery.error && projectArchives && <div className="warning-banner">项目归档刷新失败，当前展示的是上次成功结果。<Button variant="secondary" className="ghost-button" disabled={projectArchivesQuery.isFetching} onClick={() => void projectArchivesQuery.refetch()}>重新加载</Button></div>}
@@ -278,7 +280,7 @@ export function ProjectSettingsPage() {
           {restore.error && <p className="form-error">{restore.error.message}</p>}
         </section>}
       </>}
-      {editing && project && <ProjectForm project={project} onClose={() => setEditing(false)} />}
+      {!issueTrackingOnly && editing && project && <ProjectForm project={project} onClose={() => setEditing(false)} />}
       {adding && <AddProjectPersonForm projectId={selectedProjectId} onNeedsRecheck={() => setMembersNeedRecheck(true)} onClose={() => setAdding(false)} />}
       {removeTarget && <ConfirmDialog title="移出项目成员" description={<>将“<strong>{removeTarget.name}</strong>”移出当前项目？人员资料和其他项目权限不会受到影响。</>} confirmLabel="确认移出" pendingLabel="移除中…" danger pending={remove.isPending} disabled={membersNeedRecheck} error={remove.error?.message} onClose={() => { remove.reset(); setRemoveTarget(null); }} onConfirm={() => remove.mutate({ projectId: selectedProjectId, person: removeTarget })} />}
     </div>

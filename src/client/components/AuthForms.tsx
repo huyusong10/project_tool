@@ -1,4 +1,5 @@
 import * as accountsApi from '../features/accounts/api';
+import { useIssueTrackingOnly } from '../application-mode';
 import { Button } from './Button';
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -17,6 +18,7 @@ function AuthFormError({ message }: { message: string }) {
 }
 
 export function LoginDialog({ onClose, branding }: { onClose: () => void; branding: SystemBranding }) {
+  const issueTrackingOnly = useIssueTrackingOnly();
   const client = useQueryClient();
   const [error, setError] = useState("");
   const completeLogin = async (session: Session) => {
@@ -60,7 +62,7 @@ export function LoginDialog({ onClose, branding }: { onClose: () => void; brandi
       <BrandLogo branding={branding} className="login-brand-logo" />
       <p className="login-brand-name field-full"><strong>{branding.systemName}</strong></p>
       <p className="field-help field-full">
-        登录后按账号角色进入个人工作台或项目管理功能。
+        {issueTrackingOnly ? '登录后查看和处理已授权项目中的问题。' : '登录后按账号角色进入个人工作台或项目管理功能。'}
       </p>
       <label className="field field-full">
         <span>用户名</span>

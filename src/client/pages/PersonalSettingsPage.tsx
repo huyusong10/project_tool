@@ -17,6 +17,7 @@ import { LoadingState } from "../components/Feedback";
 import { copyText as writeClipboardText } from "../clipboard";
 import { useMinuteClock } from "../use-minute-clock";
 import { JiraConnectionPanel } from '../features/jira/JiraConnectionPanel';
+import { useIssueTrackingOnly } from '../application-mode';
 
 type TokenRecheckKind = "create" | "revoke";
 
@@ -40,6 +41,7 @@ function persistTokenRecheck(accountId: string, kind: TokenRecheckKind | null) {
 }
 
 export function PersonalSettingsPage() {
+  const issueTrackingOnly = useIssueTrackingOnly();
   const { session } = useSession();
   const { projects } = useProjects();
   const { openPassword } = useUiActions();
@@ -54,7 +56,7 @@ export function PersonalSettingsPage() {
   const [copied, setCopied] = useState<"endpoint" | "token" | null>(null);
   const [revokeTarget, setRevokeTarget] = useState<ApiToken | null>(null);
   const [revokeNeedsRecheck, setRevokeNeedsRecheck] = useState(initialTokenRecheck === "revoke");
-  const tokensQuery = useQuery({ queryKey: [...keys.myTokens, tokenScope], queryFn: ({ signal }) => tokensApi.tokens<ApiToken[]>({ signal }) });
+  const tokensQuery = useQuery({ queryKey: [...keys.myTokens, tokenScope], queryFn: ({ signal }) => tokensApi.tokens<ApiToken[]>({ signal }), enabled: !issueTrackingOnly });
   const tokens = tokensQuery.data || [];
   const setTokenRecheck = (kind: TokenRecheckKind | null) => {
     persistTokenRecheck(tokenScope, kind);
@@ -119,7 +121,7 @@ export function PersonalSettingsPage() {
     return Number(leftInactive) - Number(rightInactive) || right.createdAt.localeCompare(left.createdAt);
   });
   const pagination = useListPagination({ items: orderedTokens, id: 'tokens', personal: true, ready: Boolean(tokensQuery.data), loading: tokensQuery.isFetching });
-  usePageScrollPosition(Boolean(tokensQuery.data), true);
+  usePageScrollPosition(issueTrackingOnly || Boolean(tokensQuery.data), true);
   const copyText = async (value: string, target: "endpoint" | "token") => {
     setCopied(await writeClipboardText(value) ? target : null);
   };
@@ -147,18 +149,18 @@ export function PersonalSettingsPage() {
     } finally { setRecheckingTokens(false); }
   };
   return <>
-    <PageHeader title="个人设置" actions={<Button variant="primary" className="primary-button" aria-label={tokens.length?"创建 Token":"创建第一个 Token"} disabled={!tokensQuery.data||tokenListNeedsRecheck} onClick={openTokenModal}><Plus size={15} />创建 Token</Button>} secondaryActions={<Button variant="secondary" className="ghost-button" onClick={openPassword}><KeyRound size={15} />修改密码</Button>} />
+    <PageHeader title="个人设置" actions={!issueTrackingOnly && <Button variant="primary" className="primary-button" aria-label={tokens.length?"创建 Token":"创建第一个 Token"} disabled={!tokensQuery.data||tokenListNeedsRecheck} onClick={openTokenModal}><Plus size={15} />创建 Token</Button>} secondaryActions={<Button variant="secondary" className="ghost-button" onClick={openPassword}><KeyRound size={15} />修改密码</Button>} />
     <div className="page-content personal-settings-page">
       <section className="panel personal-account-panel">
         <div className="personal-account-identity"><span>{Array.from(session.username || '')[0]?.toUpperCase() || "用"}</span><div><h2>{session.username}</h2><p><CircleUserRound size={14} />{session.personId ? "已关联业务人员" : "当前账号未关联业务人员"}</p></div></div>
         <dl className="personal-account-facts">
           <div><dt>最高权限</dt><dd>{roleLabel}</dd></div>
           <div><dt>可访问项目</dt><dd>{projects.length} 个</dd></div>
-          <div><dt>MCP 权限</dt><dd>随账号权限同步</dd></div>
+          {!issueTrackingOnly && <div><dt>MCP 权限</dt><dd>随账号权限同步</dd></div>}
         </dl>
       </section>
-      <JiraConnectionPanel />
-      <section className="panel personal-mcp-panel">
+      {!issueTrackingOnly && <JiraConnectionPanel />}
+      {!issueTrackingOnly && <section className="panel personal-mcp-panel">
         <header><div><h2>MCP 接入</h2><p>为本机客户端创建独立凭据，Token 自动继承当前账号的项目权限</p></div></header>
         <div className="personal-mcp-connection">
           <span className="personal-mcp-icon"><PlugZap size={20} /></span>
@@ -186,8 +188,8 @@ export function PersonalSettingsPage() {
         {tokensQuery.data && !tokens.length && <div className="personal-token-empty"><span><KeyRound size={22} /></span><div><strong>还没有个人 Token</strong><p>为 Claude Desktop、Codex 等客户端分别创建 Token，后续可独立撤销。</p></div></div>}
         {tokensQuery.data && tokens.length > 0 && <footer className="personal-token-footer"><span>{activeTokens.length} 个有效 Token</span><small>建议不同客户端使用不同 Token，并定期撤销不再使用的凭据。</small></footer>}
         {tokensQuery.data && !tokens.length && <Pagination {...pagination.props} label="Token 列表分页" />}
-      </section>
-      {tokenModal && <Modal title="创建 MCP Token" width={560} onClose={closeTokenModal} closable={!createLock.busy}>
+      </section>}
+      {!issueTrackingOnly && tokenModal && <Modal title="创建 MCP Token" width={560} onClose={closeTokenModal} closable={!createLock.busy}>
         {newToken ? <div className="token-reveal"><ShieldCheck size={38} /><strong>Token 已创建，只显示这一次</strong><p>立即复制并保存到客户端配置中，关闭后无法再次查看。</p><div><code>{newToken}</code><Button variant="secondary" className="ghost-button" autoFocus onClick={() => void copyText(newToken, "token")}><Copy size={16} />{copied === "token" ? "已复制" : "复制 Token"}</Button></div><Button variant="primary" className="primary-button" onClick={closeTokenModal}>我已安全保存</Button></div>
           : <form className="form-grid" onSubmit={(event) => { event.preventDefault(); if (tokenListNeedsRecheck) return; const data = new FormData(event.currentTarget); createLock.run(() => createToken.mutate({ name: data.get("name"), expiresInDays: data.get("expiresInDays") === "never" ? null : Number(data.get("expiresInDays")) })); }}>
             <div className="token-create-note field-full"><ShieldCheck size={18} /><span>Token 权限与当前账号一致。建议每个客户端单独创建，便于后续识别和撤销。</span></div>
@@ -199,7 +201,7 @@ export function PersonalSettingsPage() {
             <FormSubmitActions submitLabel="创建 Token" pendingLabel="创建中…" onCancel={closeTokenModal} pending={createLock.busy} disabled={tokenListNeedsRecheck} />
           </form>}
       </Modal>}
-      {revokeTarget && <ConfirmDialog title="撤销 MCP Token" description={<><p>撤销“<strong>{revokeTarget.name}</strong>”后，使用该 Token 的客户端将立即无法访问系统。</p><p>Token 标识：<code>pm_{revokeTarget.prefix}_…</code></p>{revokeNeedsRecheck && <p className="form-error">撤销结果需要核对，请关闭窗口查看最新 Token 列表。</p>}</>} confirmLabel="确认撤销" pendingLabel="撤销中…" danger pending={revoke.isPending} disabled={revokeNeedsRecheck} error={revoke.error?.message} onClose={() => setRevokeTarget(null)} onConfirm={() => revoke.mutate(revokeTarget.id)} />}
+      {!issueTrackingOnly && revokeTarget && <ConfirmDialog title="撤销 MCP Token" description={<><p>撤销“<strong>{revokeTarget.name}</strong>”后，使用该 Token 的客户端将立即无法访问系统。</p><p>Token 标识：<code>pm_{revokeTarget.prefix}_…</code></p>{revokeNeedsRecheck && <p className="form-error">撤销结果需要核对，请关闭窗口查看最新 Token 列表。</p>}</>} confirmLabel="确认撤销" pendingLabel="撤销中…" danger pending={revoke.isPending} disabled={revokeNeedsRecheck} error={revoke.error?.message} onClose={() => setRevokeTarget(null)} onConfirm={() => revoke.mutate(revokeTarget.id)} />}
     </div>
   </>;
 }

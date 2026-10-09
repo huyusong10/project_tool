@@ -1,4 +1,5 @@
 import {workspaceParams} from '../workspace-location';
+import { issueTrackingHome, useIssueTrackingOnly } from '../application-mode';
 import {isProjectWorkspace} from '../project-workspace-navigation';
 import { useEffect, useLayoutEffect, useState } from "react";
 import { createPortal } from "react-dom";
@@ -41,9 +42,11 @@ function NavigationTooltip({ value }: { value: TooltipState | null }) {
 
 export function Sidebar({ collapsed, onToggle, onNavigate, branding, ready }: { collapsed: boolean; onToggle: () => void; onNavigate?: () => void; branding?: SystemBranding; ready: boolean }) {
   const { session } = useSession();
+  const issueTrackingOnly = useIssueTrackingOnly();
   const { selectedProjectId, projects } = useProjects();
   const [tooltip, setTooltip] = useState<TooltipState | null>(null);
   const groups = navGroupsFor({
+    issueTrackingOnly,
     authenticated: session.authenticated,
     workspaceOnly: projects.find(p => p.id === selectedProjectId)?.publicReadOnly,
     admin: isAdmin(session),
@@ -55,11 +58,11 @@ export function Sidebar({ collapsed, onToggle, onNavigate, branding, ready }: { 
   };
   const location=useLocation();
   const navigationProjectId = selectedProjectId || projects.find(project => project.id === rememberedProject(session.accountId || session.username || 'guest'))?.id;
-  const home=navigationProjectId?'/?'+workspaceParams({projectId:navigationProjectId,view:'list',scope:{kind:'project',id:navigationProjectId}}):'/';
+  const home=issueTrackingOnly?issueTrackingHome(navigationProjectId):navigationProjectId?'/?'+workspaceParams({projectId:navigationProjectId,view:'list',scope:{kind:'project',id:navigationProjectId}}):'/';
   return (
     <aside className={`sidebar${collapsed ? " sidebar-collapsed" : ""}`} aria-label="主导航">
       <div className="brand-mark">
-        <Link to={home} className="brand-home" aria-label="返回主页" title="返回项目主页" onClick={onNavigate}>
+        <Link to={home} className="brand-home" aria-label="返回主页" title={issueTrackingOnly ? '返回问题跟踪' : '返回项目主页'} onClick={onNavigate}>
           {branding ? <BrandLogo branding={branding} /> : <span className="brand-logo shell-placeholder" aria-hidden="true"/>}
         </Link>
         <strong className="brand-name">{branding?.systemName || <span className="brand-name-placeholder shell-placeholder" aria-hidden="true"/>}</strong>
@@ -98,7 +101,7 @@ export function Sidebar({ collapsed, onToggle, onNavigate, branding, ready }: { 
               })}
             </div>
           </section>
-        )) : <span className="nav-login-hint">登录后使用项目工作台</span>}
+        )) : <span className="nav-login-hint">{issueTrackingOnly ? '登录后使用问题跟踪' : '登录后使用项目工作台'}</span>}
       </nav>
       <NavigationTooltip value={tooltip} />
     </aside>

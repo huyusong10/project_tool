@@ -35,7 +35,10 @@ export type SystemOverview = {
 
 export type DatabaseIntegrityCheck = { ok: boolean; checkedAt: string; durationMs: number; message: string };
 
+export type ApplicationMode = { issueTrackingOnly: boolean; updatedAt: string | null };
+
 export type SystemBranding = {
+  applicationMode?: ApplicationMode;
   systemName: string;
   shortName: string;
   logoUrl: string | null;

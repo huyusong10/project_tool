@@ -1,4 +1,5 @@
 import { getDatabaseContext } from './database-context';
+import { getApplicationMode } from './application-mode';
 import { AppError, fail } from './errors';
 import { nextUpdatedAt } from './services/support';
 import { canonicalizeLabel, textSafetyIssue } from '../shared/search';
@@ -94,7 +95,7 @@ function parseLogoDataUrl(value: unknown) {
 
 export function getBranding() {
   const stored = readStoredBranding();
-  return publicBranding(stored.value, stored.updatedAt);
+  return { ...publicBranding(stored.value, stored.updatedAt), applicationMode: getApplicationMode() };
 }
 
 export function getBrandingLogo() {
@@ -108,7 +109,7 @@ export function getBrandingLogo() {
 }
 
 export function updateBranding(input: Record<string, unknown>, actor: Actor) {
-  return getDatabaseContext().sqlite.transaction(() => updateBrandingInTransaction(input, actor))();
+  return { ...getDatabaseContext().sqlite.transaction(() => updateBrandingInTransaction(input, actor))(), applicationMode: getApplicationMode() };
 }
 
 function updateBrandingInTransaction(input: Record<string, unknown>, actor: Actor) {

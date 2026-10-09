@@ -15,6 +15,7 @@ import type { Backup, ImportedBackup, DatabaseIntegrityCheck, SystemBranding, Sy
 import { ConfirmDialog, Modal, useSynchronousPendingLock } from "../components/Modal";
 import { EmptyState, LoadingState } from "../components/Feedback";
 import { PageHeader } from "../components/PageHeader";
+import { ApplicationModeCard } from '../features/system/ApplicationModeCard';
 import { BrandLogo, defaultBranding } from "../components/BrandLogo";
 import { useMinuteClock } from "../use-minute-clock";
 import { canonicalizeLabel } from "../../shared/search";
@@ -643,6 +644,7 @@ export function SystemPage() {
                 {!integrityLock.busy && !integrityCheck.error && integrityCheck.data && <dl className="system-check-meta"><div><dt>检查时间</dt><dd>{new Date(integrityCheck.data.checkedAt).toLocaleString("zh-CN", { hour12: false })}</dd></div><div><dt>检查耗时</dt><dd>{integrityCheck.data.durationMs} ms</dd></div></dl>}
               </div>
             </article>
+            <ApplicationModeCard />
             <BrandingSettingsCard accountKey={maintenanceAccountKey} />
           </section>
         </div>

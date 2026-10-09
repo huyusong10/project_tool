@@ -1,12 +1,13 @@
 import { lazy, type ComponentType, type LazyExoticComponent, type SVGProps } from "react";
 import { Archive, ChartNoAxesCombined, ListTodo, BriefcaseBusiness, CircleAlert, ClipboardList, FileClock, FolderCog, Network, ScanSearch, ServerCog, SlidersHorizontal, UsersRound, Workflow } from "lucide-react";
 import { DashboardPage } from "./pages/DashboardPage";
+import { isIssueTrackingRoute } from './application-mode';
 
 import type { PageScope } from './page-foundation';
 export type {PageScope} from './page-foundation';
 export type RouteAccess = "all" | "manager" | "admin";
 export type NavIcon = ComponentType<SVGProps<SVGSVGElement> & { size?: string | number }>;
-export type NavVisibilityContext = { admin: boolean; managesCurrentProject: boolean; workspaceOnly?: boolean };
+export type NavVisibilityContext = { admin: boolean; managesCurrentProject: boolean; workspaceOnly?: boolean; issueTrackingOnly?: boolean };
 
 export type NavEntry = {
   group: string;
@@ -159,11 +160,12 @@ export function navGroupsFor(context: NavVisibilityContext & { authenticated: bo
 
   const groups = new Map<string, NavGroup>();
   for (const route of appRoutes) {
+    if (context.issueTrackingOnly && !isIssueTrackingRoute(route.path)) continue;
     if (!context.authenticated && route.path !== '/' || context.workspaceOnly && route.scope === 'project' && route.path !== '/') continue;
     for (const entry of route.nav ?? []) {
       if (entry.visible && !entry.visible(context)) continue;
       const group = groups.get(entry.group) ?? { label: entry.group, items: [] };
-      group.items.push({ label: entry.label, to: route.path, icon: entry.icon, end: entry.end });
+      group.items.push({ label: context.issueTrackingOnly && route.path === '/project-settings' ? '项目成员' : entry.label, to: route.path, icon: entry.icon, end: entry.end });
       groups.set(entry.group, group);
     }
   }

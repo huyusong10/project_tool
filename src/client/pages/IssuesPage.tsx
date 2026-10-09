@@ -1,4 +1,5 @@
 import { searchIssues } from '../features/issues/api';
+import { useIssueTrackingOnly } from '../application-mode';
 import * as peopleApi from '../features/people/api';
 import * as requirementsApi from '../features/requirements/api';
 import * as issuesApi from '../features/issues/api';
@@ -84,7 +85,8 @@ function IssueScopeControl({
   onReloadRevision: () => Promise<number>;
 }) {
   const label = issueScope(issue);
-  if (!canEdit) {
+  const issueTrackingOnly = useIssueTrackingOnly();
+  if (!canEdit || issueTrackingOnly) {
     return <span className="issue-scope" title={label}>{label}</span>;
   }
   const sourceLabel = issueSourceLabel(issue);
@@ -160,6 +162,7 @@ function IssueDetail({
   onPendingChange: (pending: boolean) => void;
 }) {
   const detail=useObjectDetail();
+  const issueTrackingOnly = useIssueTrackingOnly();
   const [localTab, setLocalTab] = useState<string>(()=>detail?readDetailMemory(detail.key+':tab',initialTab):initialTab);
   const tab=detail?.tab||localTab, setTab=(value:string)=>{setLocalTab(value);detail?.onTabChange?.(value);};
   const { data: issue, error, refetch, isFetching, unavailable } = usePageResources().issue;
@@ -178,7 +181,7 @@ function IssueDetail({
       <div>
         <div className="issue-detail-badges"><IssueStatusControl issue={issue} canManage={canEditIssue} disabled={pending} onPendingChange={onPendingChange} compact /><StatusBadge kind="priority" value={issue.priority} />{issue.overdue && <span className="issue-overdue-badge">已逾期</span>}</div>
         <h3 title={issue.title}>{issue.title}</h3>
-        <p>{issue.requirementId && !pending
+         <p>{issue.requirementId && !pending && !issueTrackingOnly
           ? <Link className="issue-requirement-link" aria-label={'查看关联需求：' + issueScope(issue)} to={'/?' + workspaceParams({ projectId, view: 'list', scope: { kind: 'requirement', id: issue.requirementId }, inspector: issue.requirementId, detailTab: 'overview' })}>{issueScope(issue)}</Link>
           : issueScope(issue)} · {issue.ownerName || "未分配负责人"}</p>
       </div>

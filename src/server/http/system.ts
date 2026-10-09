@@ -14,12 +14,16 @@ import { Readable } from 'node:stream';
 
 import { checkDatabaseIntegrity, getSystemOverview } from "../system";
 import { getBranding, getBrandingLogo, updateBranding } from "../branding";
+import { updateApplicationMode } from '../application-mode';
 
-import { backupDeleteInputSchema, backupRestoreInputSchema, brandingInputSchema, emptyCommandInputSchema } from "../../shared/contracts";
+import { applicationModeInputSchema, backupDeleteInputSchema, backupRestoreInputSchema, brandingInputSchema, emptyCommandInputSchema } from "../../shared/contracts";
 import { params, parsedBody, parsedQuery, requireAdmin } from './context';
 
 export function registerSystemRoutes(app: FastifyInstance) {
   app.get('/api/branding', async () => getBranding());
+
+  app.put('/api/system/application-mode', { preHandler: requireAdmin }, async (request) =>
+    updateApplicationMode(parsedBody(request, applicationModeInputSchema), actorFromRequest(request)));
 
   app.get('/api/branding/logo', async (_request, reply) => {
     const logo = getBrandingLogo();

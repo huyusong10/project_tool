@@ -44,6 +44,10 @@ export const brandingInputSchema = z.object({
   logoDataUrl: z.union([z.string(), z.null()]).optional(),
   expectedUpdatedAt: z.string().datetime().nullable().optional(),
 }).strict();
+export const applicationModeInputSchema = z.object({
+  issueTrackingOnly: z.boolean(),
+  expectedUpdatedAt: z.string().datetime().nullable(),
+}).strict();
 export const apiTokenInputSchema = z.object({
   name: z.string().trim().min(1, 'Token名称不能为空').max(200, 'Token名称不能超过200个字符'),
   expiresInDays: z.union([

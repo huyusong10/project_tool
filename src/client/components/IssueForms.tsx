@@ -1,4 +1,5 @@
 import * as issuesApi from '../features/issues/api';
+import { useIssueTrackingOnly } from '../application-mode';
 import { useDeliveryForm } from '../use-delivery-form';
 import { useProjects } from '../app-context';
 import { Button } from './Button';
@@ -222,6 +223,7 @@ export function IssueForm({ issue, projectId, people, requirements, canManage, d
   issue?: Issue; projectId: string; people: Person[]; requirements: Requirement[]; canManage: boolean;
   defaultReporter?: string | null; autoFocusTitle?: boolean; onClose: () => void; onPendingChange?: BusyChange; busy?: boolean;
 }) {
+  const issueTrackingOnly = useIssueTrackingOnly();
   const toast = useToast();
   const { session } = useSession();
   const { businessDate: today } = useBusinessDate();
@@ -256,11 +258,12 @@ export function IssueForm({ issue, projectId, people, requirements, canManage, d
   const ownerOptions: SearchSelectOption[] = [{ value: "", label: "未分配" }, ...people.filter((person) => resolved ? person.projectRole !== "viewer" : isAssignablePerson(person)).map((person) => ({ value: person.id, label: person.name }))];
   if (draft.ownerId && current?.ownerId === draft.ownerId && !ownerOptions.some((value) => value.value === draft.ownerId)) ownerOptions.push({ value: draft.ownerId, label: current.ownerName || "历史负责人", description: "历史负责人" });
   const blocked = !!issue&&!canManage || editor.changed || editor.needsRefresh;
+  const requirementId = issueTrackingOnly ? current?.requirementId || null : draft.requirementId || null;
   return <form className="issue-form" onSubmit={(event) => {
     event.preventDefault();
     if (blocked || busy) return;
     const attemptedAt = new Date().toISOString();
-    const payload = { ...draft, resolvedAt: resolved ? draft.resolvedAt : undefined, reason: current ? draft.reason : undefined, dueDate: deferred ? null : draft.dueDate || null,
+    const payload = { ...draft, requirementId, resolvedAt: resolved ? draft.resolvedAt : undefined, reason: current ? draft.reason : undefined, dueDate: deferred ? null : draft.dueDate || null,
       ownerId: canManage ? draft.ownerId || null : null,
       ...(current ? { expectedVersion: current.version } : { projectId }),
     };
@@ -277,7 +280,7 @@ export function IssueForm({ issue, projectId, people, requirements, canManage, d
             && (!canonicalizeContent(draft.reason) || update.content === canonicalizeContent(draft.reason))))
           && latest.title === canonicalizeLabel(draft.title)
           && latest.impact === (canonicalizeContent(draft.impact) || null)
-          && latest.requirementId === (draft.requirementId || null)
+          && latest.requirementId === requirementId
           && latest.sourceRef === (canonicalizeLabel(draft.sourceRef) || null)
           && latest.priority === draft.priority
           && latest.ownerId === (draft.ownerId || null)
@@ -303,7 +306,7 @@ export function IssueForm({ issue, projectId, people, requirements, canManage, d
             && item.progress === 0
             && item.title === canonicalizeLabel(draft.title)
             && item.impact === (canonicalizeContent(draft.impact) || null)
-            && item.requirementId === (draft.requirementId || null)
+            && item.requirementId === requirementId
             && item.sourceRef === (canonicalizeLabel(draft.sourceRef) || null)
             && item.priority === draft.priority
             && item.ownerId === (canManage ? draft.ownerId || null : null)
@@ -322,7 +325,7 @@ export function IssueForm({ issue, projectId, people, requirements, canManage, d
       <FieldShell label="问题标题" full><input name="title" required autoFocus={autoFocusTitle} value={draft.title} onChange={(event) => change("title", event.target.value)} placeholder="用一句话说明要跟踪的问题" /></FieldShell>
       <FieldShell label="问题影响" full><textarea name="impact" rows={3} value={draft.impact} onChange={(event) => change("impact", event.target.value)} placeholder="可选：说明影响范围、风险或被阻塞的工作" /></FieldShell>
       {!canManage && <p className="issue-contributor-note field-full">提交后问题直接进入“处理中”，由项目经理分配负责人并确认关闭。</p>}
-      <SearchSelectField label="关联需求" name="requirementId" value={draft.requirementId} options={requirementOptions} onChange={(value) => change("requirementId", value)} pinnedValues={[""]} searchPlaceholder="搜索需求编号或名称" helper="默认展示最多20项，输入关键字可快速筛选" />
+      {!issueTrackingOnly && <SearchSelectField label="关联需求" name="requirementId" value={draft.requirementId} options={requirementOptions} onChange={(value) => change("requirementId", value)} pinnedValues={[""]} searchPlaceholder="搜索需求编号或名称" helper="默认展示最多20项，输入关键字可快速筛选" />}
       <FieldShell label="范围标识"><input name="sourceRef" value={draft.sourceRef} onChange={(event) => change("sourceRef", event.target.value)} placeholder="可选，如 DCIM-36" /></FieldShell>
       {issue && <FieldShell label="当前状态" help="在详情顶部点击状态可挂起、解决或重开" className="issue-readonly-field" asLabel={false}><StatusBadge kind="issue" value={issue.status} /></FieldShell>}
       <FieldShell label="优先级"><select name="priority" value={draft.priority} onChange={(event) => change("priority", event.target.value)}>{priorityOptions.map(({ value, label }) => <option value={value} key={value}>{label}</option>)}</select></FieldShell>

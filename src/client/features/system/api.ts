@@ -1,7 +1,15 @@
-import type { SystemBranding, SystemOverview, DatabaseIntegrityCheck, Backup } from '../../../shared/api/system';
-import { api, type ApiRequestInit } from '../../api';
+import type { ApplicationMode, SystemBranding, SystemOverview, DatabaseIntegrityCheck, Backup } from '../../../shared/api/system';
+import { api, InvalidResponseError, type ApiRequestInit } from '../../api';
 
 type PathValue = string | number | URLSearchParams;
+
+export async function applicationMode(options: ApiRequestInit) {
+  const result = await api<ApplicationMode>('/api/system/application-mode', options);
+  if (typeof result?.issueTrackingOnly !== 'boolean' || !(result.updatedAt === null || typeof result.updatedAt === 'string' && Number.isFinite(Date.parse(result.updatedAt)))) {
+    throw new InvalidResponseError(200, true, new Error('功能设置响应不完整'));
+  }
+  return result;
+}
 
 export function branding<T = SystemBranding>(options?: ApiRequestInit) {
   return api<T>(`/api/branding`, options);
