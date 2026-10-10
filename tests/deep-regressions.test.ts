@@ -236,10 +236,11 @@ describe('第二轮深度回归', () => {
     const cancelledResult = await app.inject({ method: 'POST', url: `/api/requirements/${cancelled.json().id}/cancel`, headers: { cookie: adminCookie }, payload: {
       reason: '取消', expectedVersion: cancelled.json().version,
     } });
-    const cancelledItem = cancelledResult.json().workItems[0];
+    expect(cancelledResult.json().workItems).toEqual([]);
+    const cancelledItem = cancelled.json().workItems[0];
     expect((await app.inject({ method: 'POST', url: `/api/work-items/${cancelledItem.id}/reopen`, headers: { cookie: adminCookie }, payload: {
       reason: '误重开', expectedVersion: cancelledItem.version,
-    } })).statusCode).toBe(409);
+    } })).statusCode).toBe(404);
 
     const archivedIssue = await app.inject({ method: 'POST', url: '/api/issues', headers: { cookie: adminCookie }, payload: {
       projectId, requirementId: cancelled.json().id, title: '归档问题', ownerId: personId,
@@ -258,7 +259,7 @@ describe('第二轮深度回归', () => {
       reason: '归档后重开', expectedVersion: resolved.json().version,
     } })).statusCode).toBe(409);
     const { sqlite } = await import('./support/database');
-    expect(sqlite.prepare('SELECT status FROM work_items WHERE id=?').get(cancelledItem.id)).toMatchObject({ status: 'cancelled' });
+    expect(sqlite.prepare('SELECT status FROM work_items WHERE id=?').get(cancelledItem.id)).toBeUndefined();
     expect(sqlite.prepare('SELECT status FROM issues WHERE id=?').get(archivedIssue.json().id)).toMatchObject({ status: 'resolved' });
   });
 

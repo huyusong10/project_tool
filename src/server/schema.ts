@@ -300,6 +300,8 @@ export const progressUpdates = sqliteTable('progress_updates', {
   id: text('id').primaryKey(),
   requirementId: text('requirement_id').notNull().references(() => requirements.id, { onDelete: 'cascade' }),
   workItemId: text('work_item_id').references(() => workItems.id, { onDelete: 'set null' }),
+  deletedWorkItemId: text('deleted_work_item_id'),
+  deletedWorkItemTitle: text('deleted_work_item_title'),
   percent: integer('percent').notNull(),
   workItemPercent: integer('work_item_percent'),
   content: text('content').notNull(),

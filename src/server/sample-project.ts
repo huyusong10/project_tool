@@ -350,6 +350,10 @@ export function ensureBuiltInSampleProject(sqlite: SqliteDatabase, enabled: bool
       const createdAt = at(entry.day);
       insertProgress.run(entry.id, requirementIds.get(entry.requirement), workItemIds.get(`${entry.requirement}:${entry.work}`), entry.percent, entry.workPercent, entry.content, createdAt, createdAt);
     }
+    sqlite.prepare(`INSERT INTO progress_updates(id,requirement_id,work_item_id,percent,work_item_percent,content,event_type,created_at,updated_at)
+      SELECT 'sample-cancel-'||w.id,w.requirement_id,w.id,r.progress,w.progress,'取消工作项：'||w.title||'；工作项已移除，需要时重新添加。','cancel',w.updated_at,w.updated_at
+      FROM work_items w JOIN requirements r ON r.id=w.requirement_id WHERE r.project_id=? AND w.status='cancelled'`).run(SAMPLE_PROJECT_ID);
+    sqlite.prepare("DELETE FROM work_items WHERE requirement_id IN(SELECT id FROM requirements WHERE project_id=?) AND status='cancelled'").run(SAMPLE_PROJECT_ID);
 
     const issueIds = new Map<string, string>();
     const insertIssue = sqlite.prepare(`INSERT INTO issues

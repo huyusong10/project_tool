@@ -130,7 +130,7 @@ export function analysePaths(input: PathInput, requestedTarget = projectTarget):
     for (const w of works.get(r.id)!) {
       if (w.status === 'cancelled' && !referenced.has(w.id)) continue;
       const n = add(w.id, r.id, r.executionMode==='direct'?'execution':'work', w.title);
-      Object.assign(n, { progress:w.progress,progressWeight:w.progressWeight,workStage:w.workStage,version:w.version,status: w.status, ownerName: w.ownerName, milestoneLabel: w.milestoneLabel, ownerId:w.ownerId,assigneeIds:w.assigneeIds,assigneeNames:w.assigneeNames, plannedStart: w.plannedStart, plannedEnd: w.plannedEnd,
+      Object.assign(n, { jiraLinks:w.jiraLinks, progress:w.progress,progressWeight:w.progressWeight,workStage:w.workStage,version:w.version,status: w.status, ownerName: w.ownerName, milestoneLabel: w.milestoneLabel, ownerId:w.ownerId,assigneeIds:w.assigneeIds,assigneeNames:w.assigneeNames, plannedStart: w.plannedStart, plannedEnd: w.plannedEnd,
         delayed:w.status!=='cancelled'&&calculateWorkItemGap(w,input.asOfDate).finishVariance>0,scheduleComplete:!!w.plannedStart&&!!w.plannedEnd });
       n.estimate={durationDays:w.durationDays,earliestStart:w.earliestStart,unblockEstimate:w.unblockEstimate,forecastEnd:w.forecastEnd};
       n.arrangement=w.arrangement||'early';n.arrangementAnchor=w.arrangementAnchor;

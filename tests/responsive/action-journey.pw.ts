@@ -30,7 +30,7 @@ test('未分派工作项从行动定位到原工作，分派后行动消失',asy
  const {owner,create}=await fixture(page),requirement=await create({title:'工作项分派旅程',plannedStart:'2026-09-14',plannedEnd:'2026-09-15'});
  const created=await post(page,`/api/requirements/${requirement.id}/work-items`,{expectedVersion:requirement.version,title:'待分派验证',plannedStart:'2026-09-14',plannedEnd:'2026-09-15'});
  await page.goto('/actions?reason=unassigned');const action=page.locator('.action-item').filter({hasText:'待分派验证'});await expect(action).toContainText('未分派');await action.click();
- await expect(page).toHaveURL(new RegExp('detailId='+created.id));await page.getByRole('tab',{name:'资料',exact:true}).click();
+ await expect(page).toHaveURL(new RegExp('detailId='+created.id));await expect(page.getByRole('tab',{name:'资料',exact:true})).toHaveAttribute('aria-selected','true');
  const row=page.locator('.work-arrangement-row[data-work-id="'+created.id+'"]');await row.getByRole('button',{name:/^主负责人：/}).click();await page.getByRole('option',{name:new RegExp(owner.name)}).click();await expect(row.getByRole('button',{name:/^主负责人：/})).toContainText(owner.name);
  await page.goBack();await expect(page).toHaveURL(/\/actions\?reason=unassigned/);await expect(page.locator('.action-item').filter({hasText:'待分派验证'})).toHaveCount(0);
 });

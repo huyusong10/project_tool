@@ -200,7 +200,7 @@ it('旧预览不能搭配新日期或最新需求版本，旧客户端不传预�
   expect((await plan('REST', 'apply', requirement.id, { ...input, expectedVersion: latest.version })).statusCode).toBe(200);
 });
 
-it('补全计划不改写已取消工作项的历史空排期', async () => {
+it('取消后再次套用模板会新建工作，不恢复旧工作', async () => {
   const { template, requirement, input } = await fixture();
   const created = await post(`/api/requirements/${requirement.id}/work-items`, {
     title: template.items[0].title, expectedVersion: requirement.version,
@@ -211,19 +211,20 @@ it('补全计划不改写已取消工作项的历史空排期', async () => {
     expectedVersion: item.version, reason: '该步骤不再执行',
   });
   expect(cancelled.statusCode, cancelled.body).toBe(200);
-  const cancelledSnapshot = cancelled.json<Requirement['workItems'][number]>();
   const current = await detail(requirement.id);
 
   const preview = (await plan('REST', 'preview', requirement.id, input)).body as Preview;
   expect(preview.entries[0]).toMatchObject({
-    workItemId: item.id, currentStart: null, currentEnd: null, willChange: false, reason: 'terminal',
+    workItemId: null, currentStart: null, currentEnd: null, willChange: true, reason: 'missing_item',
   });
   const applied = await plan('REST', 'apply', requirement.id, {
     ...input, expectedVersion: current.version, previewToken: preview.previewToken,
     templateItemIds: [template.items[0].id], reason: '尝试补全终态项',
   });
   expect(applied.statusCode).toBe(200);
-  expect(withoutForecastRevision((await detail(requirement.id)).workItems.find((entry) => entry.id === item.id)!)).toEqual(withoutForecastRevision(cancelledSnapshot));
+  const saved=await detail(requirement.id);
+  expect(saved.workItems.some(entry=>entry.id===item.id)).toBe(false);
+  expect(saved.workItems.find(entry=>entry.title===item.title)).toMatchObject({status:'not_started',progress:0,plannedStart:preview.entries[0].proposedStart});
 });
 
 it('补全计划优先匹配同名的有效工作项而非已取消历史项', async () => {
@@ -236,7 +237,6 @@ it('补全计划优先匹配同名的有效工作项而非已取消历史项', a
     expectedVersion: historical.json().version, reason: '保留旧步骤',
   });
   expect(cancelled.statusCode, cancelled.body).toBe(200);
-  const cancelledSnapshot = cancelled.json<Requirement['workItems'][number]>();
   const afterCancel = await detail(requirement.id);
   const replacement = await post(`/api/requirements/${requirement.id}/work-items`, {
     title: template.items[0].title, expectedVersion: afterCancel.version, reason: '新增替代步骤',
@@ -256,6 +256,5 @@ it('补全计划优先匹配同名的有效工作项而非已取消历史项', a
   expect(saved.workItems.find((entry) => entry.id === active.id)).toMatchObject({
     plannedStart: preview.entries[0].proposedStart, plannedEnd: preview.entries[0].proposedEnd,
   });
-  expect(withoutForecastRevision(saved.workItems.find((entry) => entry.id === cancelledSnapshot.id)!)).toEqual(withoutForecastRevision(cancelledSnapshot));
+  expect(saved.workItems.some(entry=>entry.id===historical.json().id)).toBe(false);
 });
-import { withoutForecastRevision } from './fixtures/forecast-snapshot';

@@ -91,6 +91,25 @@ beforeEach(async () => {
 afterAll(async () => { vi.unstubAllGlobals(); await app?.close(); context?.close(); fs.rmSync(directory, { recursive: true, force: true }); });
 
 describe('personal Jira REST integration', () => {
+  it('exposes saved Jira entries across workspace reads without a token or network request', async () => {
+    await bind(); linkRequirement(requirementId, ['TEST-2', 'TEST-1']);
+    await parse(request('DELETE', '/api/me/jira-connection')); vi.mocked(fetch).mockClear();
+    const links = [
+      { key: 'TEST-1', url: remote['TEST-1'].url, source: 'binding' },
+      { key: 'TEST-2', url: remote['TEST-2'].url, source: 'reference' },
+    ];
+    expect((await parse(request('GET', '/api/requirements/' + requirementId))).jiraLinks).toEqual(links);
+    for (const url of ['/api/dashboard?projectId=' + projectId, '/api/projects/' + projectId + '/path-analysis']) {
+      const result = await parse(request('GET', url));
+      expect(result.requirements.find((r: { id: string }) => r.id === requirementId).jiraLinks).toEqual(links);
+    }
+    await parse(request('DELETE', api('/bindings/' + requirementId)));
+    expect((await parse(request('GET', '/api/requirements/' + requirementId))).jiraLinks).toEqual([
+      { key: 'TEST-2', url: remote['TEST-2'].url, source: 'reference' },
+      { key: 'TEST-1', url: remote['TEST-1'].url, source: 'reference' },
+    ]);
+    expect(fetch).not.toHaveBeenCalled(); expect(writes).toEqual([]);
+  });
   it('shares the main Jira link with project readers without granting remote access', async () => {
     await bind(); const person = await parse(request('POST', '/api/people', { name: 'Jira link reader' }));
     context.sqlite.prepare("INSERT INTO project_people(project_id,person_id,project_role,created_at) VALUES (?,?,'viewer',?)").run(projectId, person.id, new Date().toISOString());

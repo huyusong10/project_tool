@@ -18,7 +18,7 @@ test('里程碑确认同步锁定，响应异常后回读已生效状态',async(
  const template=await(await page.request.post('/api/templates',{data:{projectId:project.id,name:'人工里程碑流程',dependencyMode:'dependencies',items:[{clientKey:'m',title:'手动确认交付',kind:'milestone',confirmationMode:'manual',durationDays:0,startOffsetDays:0,sortOrder:0,predecessorKeys:[]}]}})).json();
  const created=await page.request.post('/api/requirements',{data:{projectId:project.id,templateId:template.id,title:'里程碑确认需求',plannedStart:addBusinessDays(todayIso(),0)}});expect(created.ok(),await created.text()).toBe(true);const requirement=await created.json();
  const analysis=await(await page.request.get('/api/requirements/'+requirement.id+'/path-analysis')).json() as PathAnalysis,milestone=(analysis.milestones||[]).find(item=>item.title==='手动确认交付')!;
- await openGraph(page,'/requirements/'+requirement.id+'?view=path');await ready(page);await selectList(page,milestone.title);
+ await openGraph(page,'/requirements/'+requirement.id+'?view=path');await ready(page);await page.getByRole('button',{name:milestone.title,exact:true}).press('Enter');
  const button=page.getByRole('button',{name:'确认里程碑达成',exact:true});await expect(button).toBeVisible();
  let writes=0,release!:()=>void;const pending=new Promise<void>(resolve=>{release=resolve;});
  await page.route('**/api/milestones/'+milestone.id+'/achieve',async route=>{const index=++writes;await pending;if(index===1){await route.fetch();await route.fulfill({status:200,contentType:'text/html',body:'invalid response'});}else await route.fulfill({status:409,json:{error:'重复确认'}});});

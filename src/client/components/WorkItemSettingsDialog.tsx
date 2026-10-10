@@ -343,10 +343,10 @@ export function WorkItemSettingsDialog({
   const content = <>
       <div className="work-editor-modal">
         {!itemId&&<DetailToolbar><div className="work-editor-modal-toolbar">
-          <span className={orderDisabledReason?'work-order-notice':undefined} role="status" title={orderDisabledReason||'拖动手柄排序；也可聚焦手柄，空格选中、方向键移动、空格放下，Esc 取消'}>{requirement.workItems.length} 个工作项 · {orderDisabledReason?requirementLocked?`需求${{pending_acceptance:'待验收',completed:'已完成',cancelled:'已取消'}[requirement.status as 'pending_acceptance'|'completed'|'cancelled']}，管理员可维护已有资料`:'当前安排已锁定':'拖动手柄排序 · 支持键盘操作'}</span>
+          <span className={orderDisabledReason?'work-order-notice':undefined} role="status" title={requirement.workItems.length>1?(orderDisabledReason||'拖动手柄排序；也可聚焦手柄，空格选中、方向键移动、空格放下，Esc 取消'):undefined}>{requirement.workItems.length} 个工作项{requirement.workItems.length>1 && <> · {orderDisabledReason?requirementLocked?`需求${{pending_acceptance:'待验收',completed:'已完成',cancelled:'已取消'}[requirement.status as 'pending_acceptance'|'completed'|'cancelled']}，管理员可维护已有资料`:'当前安排已锁定':'拖动手柄排序 · 支持键盘操作'}</>}</span>
           <div className="panel-actions">
             {canEdit&&onOpenDependencies&&<Button aria-label="前置关系与工期" title="前置关系与工期" variant="secondary" className="ghost-button" disabled={settingsUnknown} onClick={onOpenDependencies}>依赖</Button>}
-            {canEdit&&canManageRequirement && (!requirement.workItems.length || requirement.workItems.some((item) => !['completed', 'cancelled'].includes(item.status) && (!item.plannedStart || !item.plannedEnd))) && <Button aria-label="补全计划" title="补全计划" variant="secondary" className="ghost-button" disabled={settingsUnknown} onClick={onOpenPlan}>排期</Button>}
+            {canEdit&&canManageRequirement && !requirementLocked && (!requirement.workItems.length || requirement.workItems.some((item) => !['completed', 'cancelled'].includes(item.status) && (!item.plannedStart || !item.plannedEnd))) && <Button aria-label="补全计划" title="补全计划" variant="secondary" className="ghost-button" disabled={settingsUnknown} onClick={onOpenPlan}>排期</Button>}
             <Button variant="primary" aria-label="添加工作项" className="primary-button" disabled={!canEdit || requirementLocked || settingsUnknown || createItem.isPending || createReading} title={orderDisabledReason||undefined} onClick={startNewItem}><Plus size={15} />新增</Button>
           </div>
         </div></DetailToolbar>}
@@ -396,7 +396,7 @@ export function WorkItemSettingsDialog({
           />
           {createRow}
         </div>
-        {!requirement.workItems.length && !newItem && <EmptyState title="还没有工作项" detail="可新增工作项，或从通用研发模板补充。" />}
+        {!requirement.workItems.length && !newItem && <EmptyState title="没有当前工作项" detail={requirementLocked?'历史进展可在“记录”中查看。':'可新增工作项或从模板补充；历史进展可在“记录”中查看。'} />}
         </div>
       </div>
     </>;

@@ -5,7 +5,6 @@ import { scryptSync } from 'node:crypto';
 import { afterAll, beforeAll, expect, it } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 import type { MyWork, Requirement } from '../src/client/types';
-import { workItemActualRange } from '../src/client/gantt-actual';
 import { todayIso } from '../src/shared/domain';
 
 const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'pm-my-work-journey-'));
@@ -83,15 +82,14 @@ it('我的工作与详情共用估算、参与人和执行记录，只返回本�
   expect(result.requirements).toEqual([]);
 });
 
-it('从我的工作查看已取消项，时间条在取消日结束且不计为完成', async () => {
+it('取消工作从我的工作移除，保留需求历史且不计为完成', async () => {
   const { detail, myWork, command, work } = await fixture();
   await command('start');
   await request('POST', `/api/work-items/${work.id}/cancel`, { expectedVersion: (await detail()).workItems[0].version, reason: '这一项不再交付' });
-  const { forecastBasis: _cancelledBasis, blockerCoordination: _cancelledCoordination, ...cancelled } = (await detail()).workItems[0], result = await myWork();
-  const personal = result.items.find(item => item.id === work.id)!;
-  expect(cancelled.cancelledAt).toBeTruthy();
-  expect(personal).toMatchObject(cancelled);
-  expect(workItemActualRange(personal, '2026-12-31')).toEqual(workItemActualRange(cancelled, '2026-12-31'));
+  const after=await detail(),result=await myWork();
+  expect(after.workItems).toEqual([]);
+  expect(after.progressUpdates).toEqual(expect.arrayContaining([expect.objectContaining({workItemId:work.id,eventType:'cancel'})]));
+  expect(result.items.some(item=>item.id===work.id)).toBe(false);
   expect(result.summary).toMatchObject({ total: 0, completed: 0, blocked: 0 });
   expect(result.completionTrend).toEqual([]);
 });

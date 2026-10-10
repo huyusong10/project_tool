@@ -1,4 +1,5 @@
 import { requirementForecastLookup } from './requirement-forecast';
+import { attachRequirementJiraEntries, referenceJiraEntries } from './jira-entries';
 import { readReferenceLinks, type ReferenceLink } from '../../shared/reference-links';
 import { deriveExecutionStage, type ExecutionStage, type WorkStage } from '../../shared/execution-stage';
 import { deliveryForecast } from '../../shared/forecast-basis';
@@ -13,6 +14,7 @@ import { getPathAnalysis, startConditions } from './paths';
 import type { PathRisk } from '../../shared/paths';
 
 export type WorkItemRecord = import('../../shared/forecast-basis').ExecutionMetadata & {
+  jiraLinks?: import('../../shared/jira-links').JiraEntry[];
   referenceLinks?:ReferenceLink[]; workStage?:WorkStage|null; progressWeight?:number|null;
   durationDays?:number|null;
   dependencyRevision?:number; unmetPredecessors?:Array<{id:string;title:string}>;
@@ -25,6 +27,7 @@ export type WorkItemRecord = import('../../shared/forecast-basis').ExecutionMeta
 };
 
 export type RequirementRecord = DeliveryFields & import('../../shared/intake').Organization & Partial<ProcessingResult> & {
+  jiraLinks?: import('../../shared/jira-links').JiraEntry[];
   stageResetAt?:string|null; executionStage?:ExecutionStage; milestones?: import('../../shared/paths').PathMilestone[];
   readinessIssues?:string[];
   pathRisk?: PathRisk;
@@ -45,13 +48,14 @@ export const requirementSelect = `SELECT EXISTS(SELECT 1 FROM project_people op 
     r.forecast_duration AS forecastDuration,r.forecast_ready_at AS forecastReadyAt,r.duration_days AS durationDays,r.forecast_end AS forecastEnd,r.unblock_estimate AS unblockEstimate,r.split_base_progress AS splitBaseProgress,r.split_at AS splitAt,
     (SELECT name FROM people WHERE id=r.acceptance_owner_id) AS acceptanceOwnerName,
     EXISTS(SELECT 1 FROM project_people ap JOIN accounts aa INDEXED BY idx_accounts_person ON aa.person_id=ap.person_id JOIN people person ON person.id=ap.person_id WHERE ap.project_id=r.project_id AND ap.person_id=r.acceptance_owner_id AND ap.project_role IN ('member','manager') AND aa.status='active' AND aa.deleted_at IS NULL AND person.active=1 AND person.deleted_at IS NULL) AS acceptanceOwnerValid,r.id, r.project_id AS projectId, pr.name AS projectName,
-  r.template_id AS templateId, t.name AS templateName, r.title,
+  jb.issue_key AS jiraKey,jb.site AS jiraSite,r.template_id AS templateId, t.name AS templateName, r.title,
   r.reference_links AS referenceLinks,r.background, r.source_notes AS sourceNotes, r.acceptance_criteria AS acceptanceCriteria, r.reference_url AS referenceUrl, r.sort_order AS sortOrder,r.phase_id AS phaseId,(SELECT name FROM feature_phases fp WHERE fp.id=r.phase_id) AS phaseName,r.stage_reset_at AS stageResetAt,r.feature_id AS featureId,(SELECT CASE WHEN kind='other' THEN '其他需求' ELSE name END FROM features WHERE id=r.feature_id) AS featureName,
   r.owner_id AS ownerId, p.name AS ownerName, r.status, r.planned_start AS plannedStart,
   r.planned_end AS plannedEnd, r.progress, r.risk_level AS riskLevel, r.priority,
   r.accepted_at AS acceptedAt, r.accepted_by_account_id AS acceptedByAccountId, r.version,
   r.created_at AS createdAt, r.updated_at AS updatedAt, r.deleted_at AS deletedAt
   FROM requirements r JOIN projects pr ON pr.id = r.project_id
+  LEFT JOIN jira_bindings jb ON jb.requirement_id = r.id
   LEFT JOIN people p ON p.id = r.owner_id
   LEFT JOIN work_item_templates t ON t.id = r.template_id`;
 
@@ -119,7 +123,7 @@ export function loadWorkItemsByRequirementIds(requirementIds: string[], requirem
       .filter((person) => person.id !== item.ownerId)
       .map(({ workItemId: _workItemId, ...person }) => person);
     result.get(item.requirementId)!.push({
-      ...item,referenceLinks:readReferenceLinks(item.referenceLinks),forecastReview:item.forecastReview?JSON.parse(String(item.forecastReview)):null,
+      ...item,jiraLinks:referenceJiraEntries(item.referenceLinks),referenceLinks:readReferenceLinks(item.referenceLinks),forecastReview:item.forecastReview?JSON.parse(String(item.forecastReview)):null,
       ...conditions.get(item.id),
       cancelledAt: cancellationHistory.workItemDates.get(item.id) || null,
       collaborators: itemCollaborators,
@@ -174,6 +178,7 @@ function readRequirements(filters: { phaseId?:string; featureId?:string;delivery
   if (filters.projectId) { where.push('r.project_id=?'); params.push(filters.projectId); }
   if (filters.ownerId) { where.push('r.owner_id=?'); params.push(filters.ownerId); }
   const requirements = rows<RequirementRecord>(`${requirementSelect} WHERE ${where.join(' AND ')} ORDER BY r.updated_at DESC`, ...params);
+  attachRequirementJiraEntries(requirements);
   const loadedWorkItems = loadWorkItemsByRequirementIds(
     requirements.map((requirement) => requirement.id),
     new Map(requirements.map((requirement) => [requirement.id, requirement.status])),
@@ -215,6 +220,7 @@ export function getRequirement(...args: Parameters<typeof readRequirement>) {
 function readRequirement(id: string, includeDeleted = false, withPathAnalysis = true) {
   const requirement = row<RequirementRecord>(`${requirementSelect} WHERE r.id=? ${includeDeleted ? '' : 'AND r.deleted_at IS NULL'}`, id);
   if (!requirement) notFound('需求不存在');
+  attachRequirementJiraEntries([requirement]);
   const asOfDate = todayIso();
   const loadedWorkItems = loadWorkItemsByRequirementIds([id], new Map([[id, requirement.status]]));
   const result = enrichRequirement(
@@ -223,8 +229,8 @@ function readRequirement(id: string, includeDeleted = false, withPathAnalysis = 
     asOfDate,
     loadedWorkItems.requirementCancellationDates.get(id),
   );
-  const progressUpdates = rows(`SELECT u.id, u.requirement_id AS requirementId, u.work_item_id AS workItemId,
-    w.title AS workItemTitle, u.percent, u.work_item_percent AS workItemPercent, u.content,
+  const progressUpdates = rows(`SELECT u.id, u.requirement_id AS requirementId, COALESCE(u.work_item_id,u.deleted_work_item_id) AS workItemId,
+    COALESCE(w.title,u.deleted_work_item_title) AS workItemTitle, u.percent, u.work_item_percent AS workItemPercent, u.content,
     u.event_type AS eventType, u.supersedes_id AS supersedesId, u.created_by_account_id AS createdByAccountId,
     a.username AS createdByName, u.created_at AS createdAt, u.updated_at AS updatedAt,
     COALESCE(js.state,'pending') AS jiraSyncState,js.pr_id AS jiraPrId,js.comment_id AS jiraCommentId,js.synced_at AS jiraSyncedAt,

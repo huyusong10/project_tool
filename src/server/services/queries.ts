@@ -7,6 +7,7 @@ import { isOverdueByWorkday, todayIso } from '../../shared/domain';
 import { listRequirements, loadWorkItemsByRequirementIds } from './requirements';
 import { getPathAnalysis } from './paths';
 import { deliveryForecast } from '../../shared/forecast-basis';
+import { workItemCancellationImpact } from './work-item-removal';
 import { compareProgressNames, compareProgressTitles, matchesProgressStatus, matchesProgressStage } from '../../shared/progress-query';
 import type { WorkStage } from '../../shared/execution-stage';
 
@@ -63,7 +64,7 @@ export function readWorkItem(id: string, actor: AuthorizationActor) {
     const asOfDate = todayIso();
     const reference = getDatabaseContext().sqlite.prepare(`${workReference} ${workFrom} WHERE w.id=? AND r.deleted_at IS NULL AND p.deleted_at IS NULL`).get(id) as WorkReference | undefined;
     if (!reference) notFound('工作项不存在');
-    return workDetails([reference], asOfDate)[0];
+    return { ...workDetails([reference], asOfDate)[0], cancellationImpact: workItemCancellationImpact(id) };
   })();
 }
 
@@ -114,7 +115,7 @@ export function queryProgressUpdates(raw: unknown, actor: AuthorizationActor) {
     const params: unknown[] = [input.projectId, snapshot];
     const add = (clause: string, value: unknown) => { where.push(clause); params.push(value); };
     if (input.requirementId) add('r.id=?', input.requirementId);
-    if (input.workItemId) add('u.work_item_id=?', input.workItemId);
+    if (input.workItemId) add('COALESCE(u.work_item_id,u.deleted_work_item_id)=?', input.workItemId);
     if (input.authorAccountId) add('u.created_by_account_id=?', input.authorAccountId);
     if (input.eventType) add('u.event_type=?', input.eventType);
     if (input.q) add('search_plain_match(u.content,?)=1', input.q);
@@ -123,7 +124,7 @@ export function queryProgressUpdates(raw: unknown, actor: AuthorizationActor) {
     const from = `FROM progress_updates u JOIN requirements r ON r.id=u.requirement_id LEFT JOIN work_items w ON w.id=u.work_item_id LEFT JOIN accounts a ON a.id=u.created_by_account_id WHERE ${where.join(' AND ')}`;
     const { total } = getDatabaseContext().sqlite.prepare(`SELECT COUNT(*) AS total ${from}`).get(...params) as { total: number };
     const items = getDatabaseContext().sqlite.prepare(`SELECT u.id,r.project_id AS projectId,u.requirement_id AS requirementId,r.title AS requirementTitle,
-      u.work_item_id AS workItemId,w.title AS workItemTitle,u.percent,u.work_item_percent AS workItemPercent,
+      COALESCE(u.work_item_id,u.deleted_work_item_id) AS workItemId,COALESCE(w.title,u.deleted_work_item_title) AS workItemTitle,u.percent,u.work_item_percent AS workItemPercent,
       u.content,u.event_type AS eventType,u.supersedes_id AS supersedesId,u.created_by_account_id AS createdByAccountId,
       a.username AS createdByName,u.created_at AS createdAt,u.updated_at AS updatedAt ${from}
       ORDER BY u.created_at DESC,u.rowid DESC LIMIT ? OFFSET ?`).all(...params, input.pageSize, (input.page - 1) * input.pageSize);

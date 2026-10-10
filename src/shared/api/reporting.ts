@@ -34,6 +34,7 @@ export type PeopleConcurrency = {
 };
 
 export type MyWorkItem = WorkItem & {
+  requirementJiraLinks?: import('../jira-links').JiraEntry[];
   projectId: string; projectName: string; requirementTitle: string; requirementStatus: string;
   assignmentType: 'owner' | 'collaborator'; overdue: boolean;
 };

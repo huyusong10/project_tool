@@ -66,6 +66,8 @@ it('未安排需求与未分派工作都进入同一行动列表',async()=>{
  await request('POST',`/api/requirements/${waiting.id}/work-items`,{expectedVersion:waiting.version,title:'未分派工作'});
  const actions=await f.actions(admin);
  expect(actions.items.some(i=>i.requirementId===waiting.id)).toBe(true);
+ const assignment=actions.items.find(i=>i.sourceType==='work_item'&&i.requirementId===waiting.id)!;
+ expect(new URL(assignment.targetPath,'http://localhost').searchParams.get('detailTab')).toBe('basic');
  expect(actions.items.flatMap(i=>i.reasonCodes)).not.toEqual(expect.arrayContaining(['blocked','candidate','forecast_review']));
 });
 it.each(['direct','work_items'] as const)('%s 问题和工作分别推进，不需要解阻确认',async mode=>{

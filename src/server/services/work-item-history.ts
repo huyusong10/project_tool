@@ -25,7 +25,7 @@ export function getCancellationHistory(
     : new Map<string, string>());
   const events = chunkValues(requirementIds).flatMap((batch) => {
     const placeholders = batch.map(() => '?').join(',');
-    return getDatabaseContext().sqlite.prepare(`SELECT u.requirement_id AS requirementId, u.work_item_id AS workItemId,
+    return getDatabaseContext().sqlite.prepare(`SELECT u.requirement_id AS requirementId, COALESCE(u.work_item_id,u.deleted_work_item_id) AS workItemId,
       u.event_type AS eventType, u.created_at AS createdAt
       FROM progress_updates u
       WHERE u.requirement_id IN (${placeholders})

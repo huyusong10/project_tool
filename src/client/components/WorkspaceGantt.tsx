@@ -1,3 +1,4 @@
+import { WorkJiraEntries } from './JiraEntries';
 import {TreeExpansionActions} from './TreeExpansionActions';
 import { Button } from './Button';
 import {WorkspaceObjectMark} from './WorkspaceObjectMark';
@@ -68,6 +69,8 @@ export function WorkspaceGantt({rows,people,storageKey,asOfDate,selected,onSelec
         {visible.map(({row,depth})=>{
           const rowMilestones=milestoneRows.get(row.id)||[];
           const r=row.requirement,w=row.work,item=w||r,stage=r?executionStageOf(r):null;
+          const hasJira=!!(w?.jiraLinks?.length||r?.jiraLinks?.length);
+          const owner=item&&<span className="workspace-row-owner" title={item.ownerName||'未分派负责人'}>{item.ownerName||'未分派'}</span>;
           const actual=w?workItemActualRange(w,asOfDate):r?requirementActualRange(r,asOfDate):null;
           const stageLabel=stage?stage.label+(stage.stages.length===1?' · '+stage.stages[0].progress+'%':''):'';
           const stageTitle=stage&&stage.stages.length>1?stageLabel+'；'+stage.stages.map(s=>s.label+' '+s.progress+'%').join(' · '):stageLabel;
@@ -79,7 +82,17 @@ export function WorkspaceGantt({rows,people,storageKey,asOfDate,selected,onSelec
           const render=({progress,actions}:ExecutionControls)=><div className={'workspace-gantt-row kind-'+row.kind+(row.filterContext?' is-filter-context':'')+(row.archived?' is-archived':'')+(r?.executionMode==='direct'?' is-direct':'')} role="row" data-object-kind={row.virtual||row.feature?.kind==='other'?'group':row.kind} onClick={e=>{if(!(e.target as Element).closest('button,input,a,select'))onSelect(row);}} data-row-id={row.id} data-status={row.phase?.status||item?.status} aria-level={depth+1} aria-selected={selected===row.id}>
             <div className="workspace-row-label" role="rowheader" style={{paddingLeft:8+Math.min(depth,2)*10}}>
               <span className="workspace-disclosure">{!!row.children.length&&<button aria-label={'展开 '+row.title} aria-expanded={rowOpen} onClick={toggleRow}>{rowOpen?<ChevronDown size={14}/>:<ChevronRight size={14}/>}</button>}</span>
-              <WorkspaceObjectMark kind={row.virtual||row.feature?.kind==='other'?'group':row.kind} status={w?.status}/><div className="workspace-name-content"><div className="workspace-name-heading"><button className="workspace-row-title" title={item?undefined:row.title+(summary?' · '+summary:'')} {...(item?summaryTooltip.bind(details):{})} onClick={()=>{summaryTooltip.close();onSelect(row);}}><strong>{row.title}</strong>{row.phase?.status==='planning'&&<small>待细化</small>}{row.archived&&<small>已归档</small>}{row.temporary&&<small>未保存</small>}</button>{onEnter&&row.kind!=='work'&&!(row.archived&&row.kind==='requirement')&&<Button variant="ghost" iconOnly size="small" className="workspace-enter workspace-icon-button" title="进入下一级" aria-label={'进入'+row.title} onClick={()=>onEnter(row)}><ArrowUpRight size={14}/></Button>}</div>{item&&<div className="workspace-row-meta"><span className="workspace-row-owner" title={item.ownerName||'未分派负责人'}>{item.ownerName||'未分派'}</span></div>}{row.kind==='feature'&&!row.children.length&&<div className="workspace-row-meta">暂无需求</div>}{row.virtual&&<div className="workspace-row-meta">{row.children.length} 项需求 · 尚未分派阶段</div>}</div>
+              <WorkspaceObjectMark kind={row.virtual||row.feature?.kind==='other'?'group':row.kind} status={w?.status}/>
+              <div className="workspace-name-content">
+                <div className="workspace-name-heading">
+                  <button className="workspace-row-title" title={item?undefined:row.title+(summary?' · '+summary:'')} {...(item?summaryTooltip.bind(details):{})} onClick={()=>{summaryTooltip.close();onSelect(row);}}><strong>{row.title}</strong>{row.phase?.status==='planning'&&<small>待细化</small>}{row.archived&&<small>已归档</small>}{row.temporary&&<small>未保存</small>}</button>
+                  {hasJira&&owner}
+                  {onEnter&&row.kind!=='work'&&!(row.archived&&row.kind==='requirement')&&<Button variant="ghost" iconOnly size="small" className="workspace-enter workspace-icon-button" title="进入下一级" aria-label={'进入'+row.title} onClick={()=>onEnter(row)}><ArrowUpRight size={14}/></Button>}
+                </div>
+                {item&&<div className="workspace-row-meta">{hasJira?<WorkJiraEntries work={w} requirement={r}/>:owner}</div>}
+                {row.kind==='feature'&&!row.children.length&&<div className="workspace-row-meta">暂无需求</div>}
+                {row.virtual&&<div className="workspace-row-meta">{row.children.length} 项需求 · 尚未分派阶段</div>}
+              </div>
             </div>
             <div className={'workspace-row-track gantt-track gantt-split-track gantt-status-'+(item?.status||'not_started').replaceAll('_','-')} style={track} role="cell">
               {summaries.has(row.id)?<WorkspacePhaseProgress row={row} summary={summaries.get(row.id)!} tooltip={summaryTooltip} dates={nav.dates} cellWidth={nav.cellWidth} onSelect={onSelect}/>:item&&!row.archived?<GanttDateTracks plannedStart={item.plannedStart} plannedEnd={item.plannedEnd} actualStart={actual?.start} actualEnd={actual?.end} status={item.status} progress={item.progress||0} dates={nav.dates} cellWidth={nav.cellWidth} scheduleComplete={w?!!w.plannedStart&&!!w.plannedEnd:r?.scheduleComplete!==false} progressPlacement="end" fillProgress={item.status==='cancelled'?undefined:w?w.progress:item.status==='completed'?100:stage?.stages.length===1?stage.stages[0].progress:undefined} showProgress={false} showScheduleHint={false} stageLabel={w?undefined:stageTitle} forecast={ganttForecast(item.deliveryForecast,item.status,asOfDate)} interactionProps={summaryTooltip.bind(details)}/>:null}

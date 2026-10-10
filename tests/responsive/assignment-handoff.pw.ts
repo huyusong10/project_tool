@@ -32,7 +32,7 @@ test('行动提示失效执行人，从原工作项更换负责人后可开始�
   await expect(action).toContainText('项目经理');
   await action.click();
   await expect(page).toHaveURL(new RegExp('/requirements/' + r.id));
-  await page.getByRole('tab', { name: '资料', exact: true }).click();
+  await expect(page.getByRole('tab', { name: '资料', exact: true })).toHaveAttribute('aria-selected','true');
   const row = page.locator('.work-arrangement-row[data-work-id="'+r.workItems[0].id+'"]');
   await row.getByRole('button', { name: /^主负责人：/ }).click();
   await expect(page.getByRole('option', { name: new RegExp(previous.name) })).toBeDisabled();

@@ -12,6 +12,7 @@ export type PathMilestone={milestoneKind?:import('./execution-stage').MilestoneK
 export type DiagramLayout={scope:string;direction:'right'|'down';version:number;positions:Record<string,{x:number;y:number}>};
 
 export type PathWork = ExecutionMetadata & {
+  jiraLinks?: import('./jira-links').JiraEntry[];
   referenceLinks?:import('./reference-links').ReferenceLink[]; workStage?:import('./execution-stage').WorkStage|null; progressWeight?:number|null;
   version?:number;
   arrangement?:Arrangement; arrangementAnchor?:string|null; acknowledgedDependencies?:string[];
@@ -24,6 +25,7 @@ export type PathWork = ExecutionMetadata & {
 };
 
 export type PathRequirement = import('./intake').Organization & DeliveryFields & Partial<ProcessingResult> & {
+  jiraLinks?: import('./jira-links').JiraEntry[];
   sortOrder?:number; executionStage?:import('./execution-stage').ExecutionStage; stageResetAt?:string|null; createdAt?:string;updatedAt?:string;
   acknowledgedDependencies?:string[]; version?:number; background?:string|null;acceptanceCriteria?:string|null;referenceUrl?:string|null;referenceLinks?:import('./reference-links').ReferenceLink[];templateId?:string|null;
   ownerId?:string|null; assigneeIds?:string[]; assigneeNames?:string[]; delayed?:boolean; scheduleComplete?:boolean;
@@ -39,6 +41,7 @@ export type PathInput = {
 };
 
 export type PathNode = {
+  jiraLinks?: import('./jira-links').JiraEntry[];
   progress?:number;progressWeight?:number|null;
   workStage?:import('./execution-stage').WorkStage|null;
   blockerCoordination?:import('./blocker-coordination').BlockerCoordination;

@@ -82,9 +82,21 @@ function textSnapshotSummary(summary: string): string | undefined {
 }
 
 /** Existing snapshots already carry the human change description; retain the raw record separately. */
-export function auditSummary(summary: string): string {
+export function auditSummary(summary: string, context?: Pick<AuditLog, 'action' | 'entityType'>): string {
   try {
     const value = JSON.parse(summary);
+    if (context?.entityType === 'work_item' && ['cancel', 'delete'].includes(context.action)
+      && snapshot(value) && typeof value.title === 'string' && value.title.trim()
+      && Object.keys(value).every(key => ['title', 'reason', 'removedDependencies', 'milestones'].includes(key))
+      && (value.reason === undefined || typeof value.reason === 'string')
+      && Array.isArray(value.removedDependencies) && value.removedDependencies.every(snapshot)
+      && (value.milestones === undefined || Array.isArray(value.milestones) && value.milestones.every((item: unknown) => typeof snapshot(item)?.title === 'string'))) {
+      const changes = [`${value.title}：工作项已移除`];
+      if (value.reason?.trim()) changes.push(`取消原因：${value.reason.trim()}`);
+      if (value.removedDependencies.length) changes.push(`已解除 ${value.removedDependencies.length} 条依赖`);
+      if (value.milestones?.length) changes.push('需人工确认的里程碑：' + value.milestones.map((item: {title: string}) => item.title).join('、'));
+      return changes.join('；');
+    }
     if (!value || typeof value !== 'object' || typeof value.reason !== 'string' || !value.reason.trim()
       || ![value.before, value.after].some(snapshot => snapshot && typeof snapshot === 'object')) return summary;
     const title = value.after?.title || value.before?.title;
@@ -103,8 +115,12 @@ export function auditSummary(summary: string): string {
   } catch { return textSnapshotSummary(summary) || summary; }
 }
 
-export function auditObjectUrl(item: Pick<AuditLog, 'entityType' | 'entityId' | 'projectId'>): string | undefined {
+export function auditObjectUrl(item: Pick<AuditLog, 'entityType' | 'entityId' | 'projectId' | 'objectDeleted' | 'workItemDeleted' | 'workItemRequirementId'>): string | undefined {
   if (!item.projectId || !item.entityId) return;
+  if (item.entityType === 'work_item' && item.workItemDeleted) return item.workItemRequirementId ? '/?' + workspaceParams({
+    projectId: item.projectId, view: 'list', scope: {kind: 'project', id: item.projectId}, inspector: item.workItemRequirementId, detailTab: 'history',
+  }) : undefined;
+  if (item.objectDeleted) return;
   if (item.entityType === 'issue') return '/issues?' + new URLSearchParams({ projectId: item.projectId, detailId: item.entityId, detailTab: 'basic' });
   const prefix: Record<string, string> = { requirement: '', work_item: '', feature: 'feature:', feature_phase: 'phase:' };
   if (item.entityType !== 'project' && !Object.hasOwn(prefix, item.entityType)) return;

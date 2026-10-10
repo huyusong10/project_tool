@@ -88,27 +88,23 @@ test('普通协作成员经我的工作阅读需求、返回执行并完成，�
   } finally { await context.close(); }
 });
 
-test('成员在我的工作查看已取消项，实际时间条和参与人保持与需求详情一致', async ({ page, browser, baseURL }) => {
-  const { actor, context, detail, work, owner, member, myWork } = await fixture(page, browser, baseURL!);
+test('成员在我的工作不再看到已取消项，需求历史仍可读取', async ({ page, browser, baseURL }) => {
+  const { actor, context, detail, work, myWork } = await fixture(page, browser, baseURL!);
   try {
     await post(actor.request, `/api/work-items/${work.id}/start`, { expectedVersion: work.version });
-    await post(page.request, `/api/work-items/${work.id}/cancel`, { expectedVersion: (await detail()).workItems[0].version, reason: '取消这一项，保留执行事实' });
+    await post(page.request, `/api/work-items/${work.id}/cancel`, { expectedVersion: (await detail()).workItems[0].version, reason: '取消这一项，保留进展记录' });
     await actor.goto('/my-work?filter=all');
-    const personal = (await myWork()).items[0];
-    expect(personal.cancelledAt).toBe((await detail()).workItems[0].cancelledAt);
-    expect(personal.assigneeNames).toEqual([owner.name, member.name]);
-    await expect(actor.locator('.gantt-date-actual.gantt-status-cancelled')).toHaveCount(1);
-    await expect(actor.locator('.gantt-date-actual.gantt-status-cancelled')).toBeVisible();
-    await actor.locator('.gantt-date-hitbox').focus();
-    await expect(actor.locator('.gantt-popover-header')).toContainText(owner.name + '、' + member.name);
-    await actor.keyboard.press('Escape');
-    await expect(actor.locator('.gantt-date-actual.gantt-status-cancelled')).toHaveAttribute('data-end', personal.cancelledAt!);
+    expect((await myWork()).items.some(item=>item.id===work.id)).toBe(false);
+    expect((await detail()).workItems).toEqual([]);
+    await expect(actor.locator('.gantt-date-actual.gantt-status-cancelled')).toHaveCount(0);
+    await actor.reload();
+    await expect(actor.locator('.gantt-date-actual.gantt-status-cancelled')).toHaveCount(0);
     await expect(actor.getByRole('button', { name: '开始', exact: true })).toHaveCount(0);
     await expect(actor.getByRole('button', { name: '完成', exact: true })).toHaveCount(0);
   } finally { await context.close(); }
 });
 
-test('我的工作取消项在矩阵与窄屏内显示',{tag:'@responsive'},async({page,browser,baseURL})=>{
+test('我的工作取消项移除后的空态适配窄屏',{tag:'@responsive'},async({page,browser,baseURL})=>{
   const {actor,context,detail,work}=await fixture(page,browser,baseURL!);
   try{
     await post(actor.request,`/api/work-items/${work.id}/start`,{expectedVersion:work.version});
@@ -116,7 +112,7 @@ test('我的工作取消项在矩阵与窄屏内显示',{tag:'@responsive'},asyn
     await actor.goto('/my-work?filter=all');
     for(const width of [page.viewportSize()!.width,390]){
       await actor.setViewportSize({width,height:844});
-      await expect(actor.locator('.gantt-date-actual.gantt-status-cancelled')).toBeVisible();
+      await expect(actor.locator('.gantt-date-actual.gantt-status-cancelled')).toHaveCount(0);
       await expect.poll(()=>actor.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
     }
   }finally{await context.close();}

@@ -1,3 +1,4 @@
+import { invalidateRequirementViews } from '../../query-keys';
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ExternalLink, Link2, Link2Off, RefreshCw, ArrowRightLeft } from 'lucide-react';
@@ -18,6 +19,8 @@ import './jira.css';
 export function useJiraRefreshViews(projectId: string) {
   const client = useQueryClient(), { session } = useSession();
   return () => {
+    invalidateRequirementViews(client, undefined, 'links');
+    void client.invalidateQueries({ queryKey: ['jira-link', session.accountId, projectId] });
     void client.invalidateQueries({ queryKey: ['jira-progress', session.accountId, projectId] });
     void client.invalidateQueries({ queryKey: ['jira-requirement', session.accountId, projectId] });
     void client.invalidateQueries({ queryKey: ['jira-operations', session.accountId, projectId] });

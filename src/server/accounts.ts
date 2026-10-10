@@ -354,7 +354,7 @@ function readMyWork(accountId: string) {
   for(const id of new Set(rawItems.map(item=>item.projectId)))if(!forecasts.has(id))forecasts.set(id,getPathAnalysis(id,undefined,today));
   const items = rawItems.map((reference) => {
     const analysis = forecasts.get(reference.projectId)!;
-    const item = { ...workItems.get(reference.id)!, ...reference, deliveryForecast: deliveryForecast(analysis.nodes.find(n => n.id === reference.id), analysis) };
+    const item = { ...workItems.get(reference.id)!, ...reference, requirementJiraLinks: analysis.requirements.find(r => r.id === reference.requirementId)?.jiraLinks || [], deliveryForecast: deliveryForecast(analysis.nodes.find(n => n.id === reference.id), analysis) };
     const status = deriveWorkItemStatus(item);
     return { ...item, status, overdue: !['completed', 'cancelled'].includes(status) && isOverdueByWorkday(item.plannedEnd, today) };
   });
@@ -417,7 +417,7 @@ function readMyWork(accountId: string) {
     count: items.filter((item) => !['completed', 'cancelled'].includes(item.status) && item.plannedStart && item.plannedEnd && date >= item.plannedStart && date <= item.plannedEnd).length+direct.filter(r=>!['completed','cancelled','pending_acceptance'].includes(r.status)&&r.plannedStart&&r.plannedEnd&&date>=r.plannedStart&&date<=r.plannedEnd).length,
   }));
   const recentProgress = getDatabaseContext().sqlite.prepare(`SELECT u.id, u.requirement_id AS requirementId, r.title AS requirementTitle,
-    u.work_item_id AS workItemId, w.title AS workItemTitle, u.percent, u.work_item_percent AS workItemPercent, u.content,
+    COALESCE(u.work_item_id,u.deleted_work_item_id) AS workItemId, COALESCE(w.title,u.deleted_work_item_title) AS workItemTitle, u.percent, u.work_item_percent AS workItemPercent, u.content,
     u.event_type AS eventType, u.created_at AS createdAt, u.updated_at AS updatedAt
     FROM progress_updates u JOIN requirements r ON r.id=u.requirement_id
     JOIN projects pr ON pr.id=r.project_id

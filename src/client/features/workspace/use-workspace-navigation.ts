@@ -28,9 +28,10 @@ export function useWorkspaceNavigation(data: PathAnalysis, navigationData: PathA
   useEffect(()=>{const canonical=workspaceParams(location,navigationData,params);if([...canonical].some(([k,v])=>params.get(k)!==v)||[...params.keys()].some(k=>!canonical.has(k)))setParams(canonical,{replace:true});},[location,navigationData,params,setParams]);
   useEffect(()=>{try{localStorage.setItem(memoryKey,workspaceViewPreference(projectId,location.view));const stored=new URLSearchParams();for(const key of viewFields)if(params.has(key))stored.set(key,params.get(key)!);sessionStorage.setItem(viewKey,stored.toString());}catch{/* The URL remains shareable if storage is unavailable. */}},[memoryKey,viewKey,params,location,projectId]);
   const enter=(scope:WorkspaceScope)=>{setDetailTrail([]);const next=workspaceParams({...location,scope,inspector:undefined,detailTab:undefined},navigationData,params);next.delete('intake');for(const key of ['pathRelation','pathEdge','workspaceLocate','intakeView','draftProject'])next.delete(key);if(scope.kind==='requirement'&&!data.requirements.some(r=>r.id===scope.id)&&navigationData.requirements.some(r=>r.id===scope.id))next.set('draftProject',projectId);go('/?'+next);};
-  const inspect=(id?:string,tab?:string)=>{
+  const inspect=(id?:string,tab?:string,replace=false)=>{
     if(client.isMutating())return;
-    if(id&&location.inspector&&id!==location.inspector)setDetailTrail(trail=>[...trail,{id:location.inspector!,tab:location.detailTab,title:title||'上个对象'}]);
+    if(replace)setDetailTrail(trail=>trail.filter(entry=>entry.id!==location.inspector&&entry.id!==id));
+    else if(id&&location.inspector&&id!==location.inspector)setDetailTrail(trail=>[...trail,{id:location.inspector!,tab:location.detailTab,title:title||'上个对象'}]);
     else if(!id)setDetailTrail([]);
     const next=workspaceParams({...location,inspector:id,detailTab:tab},navigationData,params);next.set('pathInspector','closed');
     if(id){
@@ -38,7 +39,7 @@ export function useWorkspaceNavigation(data: PathAnalysis, navigationData: PathA
       next.set('graphInspector','closed');next.delete('pathEdge');next.delete('pathRelation');
       if(location.view==='graph')next.set('pathNode',id);
     }
-    setParams(next);
+    setParams(next,{replace});
   };
   const detailBack=()=>{const previous=detailTrail.at(-1);if(!previous)return;setDetailTrail(trail=>trail.slice(0,-1));setParams(workspaceParams({...location,inspector:previous.id,detailTab:previous.tab},navigationData,params),{replace:true});};
   const switchView=(view:WorkspaceView,locateId?:string,scope:WorkspaceScope=location.scope)=>{

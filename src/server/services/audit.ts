@@ -54,10 +54,35 @@ const auditJoins = `LEFT JOIN accounts user_account ON l.actor_type='user' AND u
   LEFT JOIN projects audit_project ON audit_project.id=l.project_id`;
 const auditFrom = `FROM audit_logs l ${auditJoins}`;
 
+/** Resolve only the displayed page; historical work must stay in the audit's project. */
+function resolveAuditObjects(items: Record<string, unknown>[]) {
+  const tables = { project: 'projects', feature: 'features', feature_phase: 'feature_phases', requirement: 'requirements', work_item: 'work_items', issue: 'issues' };
+  const params: string[] = [];
+  const queries = Object.entries(tables).flatMap(([type, table]) => {
+    const ids = [...new Set(items.filter(item => item.entityType === type && typeof item.entityId === 'string').map(item => item.entityId as string))];
+    if (!ids.length) return [];
+    params.push(...ids);
+    return [`SELECT '${type}' AS entityType, id FROM ${table} WHERE id IN (${ids.map(() => '?').join(',')})`];
+  });
+  if (!queries.length) return items;
+  const existing = new Set(rows<{entityType: string; id: string}>(queries.join(' UNION ALL '), ...params).map(item => `${item.entityType}:${item.id}`));
+  const removed = [...new Set(items.filter(item => item.entityType === 'work_item' && typeof item.entityId === 'string' && !existing.has(`work_item:${item.entityId}`)).map(item => item.entityId as string))];
+  const history = removed.length ? rows<{workItemId: string; requirementId: string; projectId: string}>(`SELECT DISTINCT u.deleted_work_item_id AS workItemId,
+    r.id AS requirementId, r.project_id AS projectId FROM progress_updates u JOIN requirements r ON r.id=u.requirement_id
+    WHERE u.deleted_work_item_id IN (${removed.map(() => '?').join(',')})`, ...removed) : [];
+  return items.map(item => typeof item.entityType === 'string' && Object.hasOwn(tables, item.entityType) && item.entityId ? { ...item,
+    objectDeleted: !existing.has(`${item.entityType}:${item.entityId}`),
+    ...(item.entityType === 'work_item' ? {
+      workItemDeleted: !existing.has(`work_item:${item.entityId}`),
+      workItemRequirementId: history.find(entry => entry.workItemId === item.entityId && entry.projectId === item.projectId)?.requirementId || null,
+    } : {}),
+  } : item);
+}
+
 export function listAudit(limit = 100, projectId?: string) {
   const normalizedLimit = Number.isFinite(limit) ? Math.min(Math.max(Math.trunc(limit), 1), 500) : 100;
-  return rows(`${auditSelect} ${auditFrom} ${projectId ? 'WHERE l.project_id=?' : ''} ORDER BY l.created_at DESC, l.rowid DESC LIMIT ?`,
-    ...(projectId ? [projectId] : []), normalizedLimit);
+  return resolveAuditObjects(rows(`${auditSelect} ${auditFrom} ${projectId ? 'WHERE l.project_id=?' : ''} ORDER BY l.created_at DESC, l.rowid DESC LIMIT ?`,
+    ...(projectId ? [projectId] : []), normalizedLimit));
 }
 
 function localDateBoundary(value: string, endOfDay: boolean) {
@@ -96,5 +121,5 @@ export function searchAudit(filters: { q?: string; actorType?: string; action?: 
   const items = rows(`${auditSelect} FROM (SELECT l.rowid, l.* FROM audit_logs l ${clause}
       ORDER BY l.created_at DESC, l.rowid DESC LIMIT ? OFFSET ?) l ${auditJoins}
       ORDER BY l.created_at DESC, l.rowid DESC`, ...params, pageSize, (page - 1) * pageSize);
-  return { items, total, page, pageSize, pages: Math.max(1, Math.ceil(total / pageSize)), snapshot };
+  return { items: resolveAuditObjects(items), total, page, pageSize, pages: Math.max(1, Math.ceil(total / pageSize)), snapshot };
 }

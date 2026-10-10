@@ -302,6 +302,13 @@
       "when": 1790000000004,
       "tag": "0042_jira_manual_confirmation",
       "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "6",
+      "when": 1790000000005,
+      "tag": "0043_cancelled_work_removal",
+      "breakpoints": true
     }
   ]
 }

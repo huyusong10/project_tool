@@ -1,7 +1,14 @@
 
 
+export type WorkItemCancellationImpact = {
+  revision: number;
+  dependencies: Array<{ id: string; sourceTitle: string; targetTitle: string }>;
+  milestones: Array<{ id: string; title: string }>;
+};
 export type WorkItem = import('../forecast-basis').ExecutionMetadata & {
+  cancellationImpact?: WorkItemCancellationImpact;
   referenceLinks?: import('../reference-links').ReferenceLink[];
+  jiraLinks?: import('../jira-links').JiraEntry[];
   workStage?:import('../execution-stage').WorkStage|null; progressWeight?:number|null;
   durationDays?:number|null;
   dependencyRevision?:number; unmetPredecessors?:Array<{id:string;title:string}>;

@@ -1,5 +1,18 @@
 const issueKey = /^[A-Z][A-Z0-9_]*-\d+$/i;
 
+export type JiraEntry = { key: string; url: string; source: 'binding' | 'reference' };
+
+/** Only explicit URLs on the configured site become navigation entries. Title hints never do. */
+export function jiraReferenceEntries(links: Array<{ url: string }>, site: string): JiraEntry[] {
+  try { const base = new URL(site); if (!/^https?:$/.test(base.protocol) || base.username || base.password) return []; } catch { return []; }
+  const entries = new Map<string, JiraEntry>();
+  for (const link of links) {
+    const key = jiraKeyFromUrl(link.url, site);
+    if (key && !entries.has(key)) entries.set(key, { key, url: site.replace(/\/+$/, '') + '/browse/' + key, source: 'reference' });
+  }
+  return [...entries.values()];
+}
+
 export function jiraKeyFromUrl(value: string, site: string): string | null {
   try {
     const url = new URL(value), base = new URL(site);

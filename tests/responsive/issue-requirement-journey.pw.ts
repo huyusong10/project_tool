@@ -19,9 +19,10 @@ test('经理和成员从协调问题进入需求，返回和刷新保留问题�
   const before = await detail();
   const inspect = async (actor: Page) => {
     await actor.goto(`/issues?projectId=${project.id}&status=resolved&q=${encodeURIComponent('联调环境')}`);
-    await actor.getByRole('button', { name: issue.title + ' 暂无影响说明', exact: true }).click();
+    await actor.locator('.issue-latest-update-button').click();
     const dialog = actor.getByRole('dialog', { name: '问题详情', exact: true });
-    await dialog.getByRole('tab', { name: '记录 1', exact: true }).click();
+    await expect(dialog.getByRole('tab', { name: '记录 1', exact: true })).toHaveAttribute('aria-selected','true');
+    expect(new URL(actor.url()).searchParams.get('detailTab')).toBe('history');
     await expect(dialog).toContainText('环境已恢复，可以继续联调。');
     await dialog.getByRole('link', { name: '查看关联需求：' + requirement.title, exact: true }).click();
     const requirementDialog = actor.getByRole('dialog', { name: requirement.title, exact: true });
@@ -62,4 +63,25 @@ test('公共问题和仅范围标识的问题保留文字，不生成不存在�
     await expect(dialog).toContainText(sourceRef || '公共问题');
     await expect(dialog.getByRole('link', { name: /^查看关联需求/ })).toHaveCount(0);
   }
+});
+
+test('最近进展进入已有处理记录，无记录问题仍能直接追加首条说明',async({page})=>{
+  await post(page.request,'/api/login',{username:'admin',password:'41_xc7q0qOjo4Inw!'});
+  const project=await post(page.request,'/api/projects',{name:'进展入口 '+Date.now()});
+  const active=await post(page.request,'/api/issues',{projectId:project.id,title:'正在核对访问步骤',discoveredAt:todayIso()});
+  await post(page.request,'/api/issues/'+active.id+'/updates',{expectedVersion:active.version,content:'已核对入口，等待联系人确认'});
+  const empty=await post(page.request,'/api/issues',{projectId:project.id,title:'刚收到的访问反馈',discoveredAt:todayIso()});
+  const read=async(id:string)=>(await(await page.request.get('/api/issues/'+id)).json());
+  const before=[await read(active.id),await read(empty.id)];
+  await page.goto('/issues?'+new URLSearchParams({projectId:project.id,q:'正在核对'}));
+  await page.locator('.issue-latest-update-button').click();
+  const dialog=page.getByRole('dialog',{name:'问题详情',exact:true});
+  await expect(dialog.getByRole('tab',{name:'记录 1',exact:true})).toHaveAttribute('aria-selected','true');
+  await expect(dialog).toContainText('已核对入口，等待联系人确认');await page.reload();await expect(dialog).toContainText('已核对入口，等待联系人确认');
+  await dialog.getByRole('tab',{name:'进展',exact:true}).click();await expect(dialog.getByRole('textbox',{name:'本次进展说明',exact:true})).toBeVisible();
+  await dialog.getByRole('button',{name:'关闭',exact:true}).click();await expect(page.getByRole('searchbox')).toHaveValue('正在核对');
+  await page.getByRole('searchbox').fill('刚收到');await page.locator('.issue-latest-update-button').click();
+  await expect(dialog.getByRole('tab',{name:'进展',exact:true})).toHaveAttribute('aria-selected','true');
+  await expect(dialog.getByRole('textbox',{name:'本次进展说明',exact:true})).toBeVisible();
+  expect([await read(active.id),await read(empty.id)]).toEqual(before);
 });

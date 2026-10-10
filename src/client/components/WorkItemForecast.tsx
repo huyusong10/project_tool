@@ -61,6 +61,7 @@ function ForecastForm({ requirement, item, data, unavailable, onReload, onClose 
         <strong className="field-full">{item.title}</strong>
         <p className="field-help field-full">计划：{item.plannedStart || '待定'} ～ {item.plannedEnd || '待定'} · 已完成 {item.progress}%</p>
         <p className="field-help field-full">当前人工预测：{node?.estimate.forecastEnd || '未设置'}；系统预计完成：{node?.forecastEnd || '待确认'}。</p>
+        {node?.status==='not_started'&&!node.estimate.forecastEnd&&node.forecastStart&&item.plannedStart&&node.forecastStart<item.plannedStart&&<p className="field-help field-full">自动预计从最早可开工日 {node.forecastStart} 按 {node.remainingDays} 个工作日推算，可能早于计划开始。</p>}
         {stale && <div className="warning-banner field-full" role="alert">数据或保存结果需要核对，已填日期保留。<Button variant="secondary" type="button" onClick={() => void reload()}>重新读取并核对</Button></div>}
         {terminal && <p className="field-full" role="alert">工作项已结束或不可用，不能修改当前预测。</p>}
         <label className="field field-full"><span>人工预测完成</span><input type="date" min={data.asOfDate} value={forecast} onChange={event => setForecast(event.target.value)} /></label>

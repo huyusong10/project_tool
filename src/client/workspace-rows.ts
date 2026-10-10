@@ -35,8 +35,6 @@ export function workspaceRows(report:Dashboard, projection?:PathAnalysis,sort='n
         plannedStart:n.plannedStart,plannedEnd:n.plannedEnd,status:old?.status||'not_started',progress:old?.progress||0,
         actualStart:old?.actualStart||null,actualEnd:old?.actualEnd||null,sortOrder:savedOrder.get(n.id)??nextOrder+index} as WorkItem;
     });
-    // The dependency graph omits cancelled work; the progress table still shows its execution history.
-    works.push(...(saved?.workItems||[]).filter(w=>w.status==='cancelled'&&!works.some(n=>n.id===w.id)));
     works.sort((a,b)=>a.sortOrder-b.sortOrder||(savedRank.get(a.id)??Number.MAX_SAFE_INTEGER)-(savedRank.get(b.id)??Number.MAX_SAFE_INTEGER));
     return {...saved,id:r.id,projectId:r.projectId,title:r.title,sortOrder:r.sortOrder,featureId:r.featureId,phaseId:r.phaseId,
       background:r.background,acceptanceCriteria:r.acceptanceCriteria,ownerId:r.ownerId,ownerName:r.ownerName,
@@ -72,6 +70,10 @@ export function workspaceRows(report:Dashboard, projection?:PathAnalysis,sort='n
 }
 
 export type RowFilters={query:string; featureId:string; phaseId:string; state:string; stage:string;status?:string;risk?:string;person?:string;schedule?:string;scope?:string;asOfDate?:string};
+/** 与编号入口一致：工作有独立链接时使用独立编号，否则继承需求编号。 */
+export function workspaceJiraKeys(row:WorkspaceRow):string[] {
+  return (row.work?.jiraLinks?.length?row.work.jiraLinks:row.requirement?.jiraLinks||[]).map(entry=>entry.key);
+}
 /** Select the current level without pruning empty features or delivery batches. */
 export function scopeWorkspaceRows(rows:WorkspaceRow[],scope:WorkspaceScope):WorkspaceRow[] {
   if(scope.kind==='project')return rows;
@@ -84,7 +86,7 @@ export function scopeWorkspaceRows(rows:WorkspaceRow[],scope:WorkspaceScope):Wor
 export function filterWorkspaceRows(rows:WorkspaceRow[],filter:RowFilters):WorkspaceRow[] {
   const states=selectedProgressStates(filter.status||'');
   const itemFilters=!!(filter.stage||filter.status||filter.risk||filter.person||filter.schedule||filter.scope);
-  const matches=(row:WorkspaceRow)=>matchesSearch([{text:row.title,weight:100},{text:row.phase?.scope||row.feature?.description||''}],filter.query);
+  const matches=(row:WorkspaceRow)=>matchesSearch([{text:row.title,weight:100},{text:row.phase?.scope||row.feature?.description||''},...workspaceJiraKeys(row)],filter.query);
   const visit=(row:WorkspaceRow,inherited=false):WorkspaceRow|null=>{
     if(row.kind==='feature'&&(filter.featureId&&row.featureId!==filter.featureId||(filter.state==='archived'?!row.archived:row.archived)))return null;
     if(row.kind!=='feature'&&filter.phaseId&&row.phaseId!==filter.phaseId)return null;

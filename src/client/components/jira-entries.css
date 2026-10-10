@@ -1,0 +1,14 @@
+@layer application {
+.jira-entries{display:inline-flex;align-items:center;gap:2px;min-width:0;max-width:100%;vertical-align:middle}
+.jira-entry-link{display:inline-flex;align-items:center;gap:5px;min-width:0;max-width:100%;padding:3px 6px;border:1px solid var(--accent-border);border-radius:5px;background:var(--accent-soft);color:var(--accent-ink);font-size:11px;line-height:1.4;text-decoration:none;white-space:nowrap}
+.jira-entry-link:hover{text-decoration:underline;background:var(--bg-surface)}
+.jira-entry-link:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.jira-entry-link b{overflow:hidden;text-overflow:ellipsis;font-weight:600;min-width:0}.jira-entry-link svg,.jira-entry-link>span{flex-shrink:0}.jira-entry-link small{font-size:10px;color:var(--text-muted)}
+.jira-entry-more{display:flex;flex-direction:column;align-items:flex-start;gap:8px;padding:12px}
+.outline-jira{margin:4px 0 3px 64px}.workspace-name-heading>.workspace-row-owner{flex:0 0 auto;max-width:4em;margin-left:auto;font-size:11px}
+.my-owned-requirement-card>.jira-entries{margin:0 12px 10px}.requirement-gantt-item-meta>.jira-entries{flex-basis:100%;margin-top:3px}
+.workspace-graph-name+.jira-entries{margin:3px 0}
+.graph-workspace .dependency-card:has(>.jira-entries){height:auto}
+.modal-card-workspace>header .jira-entry-link{font-size:12px;padding:4px 8px}
+@media(max-width:640px){.modal-card-workspace>header:has(.jira-entries){flex-wrap:wrap;padding-block:10px}.modal-card-workspace>header>.jira-entries{order:1;flex-basis:100%}}
+}

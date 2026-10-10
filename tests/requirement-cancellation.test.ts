@@ -108,8 +108,11 @@ for (const protocol of ['REST', 'MCP'] as const) {
     for (const item of before.workItems!) {
       const after = cancelled.workItems!.find((entry) => entry.id === item.id)!;
       if (item.status === 'completed') expect(withoutForecastRevision(after)).toEqual(withoutForecastRevision(item));
-      else expect(after).toMatchObject({ status: 'cancelled', version: item.version + 1, progress: item.progress, actualStart: item.actualStart, actualEnd: null, blockedAt: null, blockedReason: null });
-      expect([after.plannedStart, after.plannedEnd]).toEqual([item.plannedStart, item.plannedEnd]);
+      else {
+        expect(after).toBeUndefined();
+        expect(cancelled.progressUpdates).toEqual(expect.arrayContaining([expect.objectContaining({workItemId:item.id,workItemTitle:item.title,eventType:'cancel'})]));
+      }
+      if (after) expect([after.plannedStart, after.plannedEnd]).toEqual([item.plannedStart, item.plannedEnd]);
     }
     expect(await detail(before.id)).toEqual(cancelled);
     const dashboard = await app.inject({ url: `/api/dashboard?projectId=${before.projectId}`, headers: { cookie } });

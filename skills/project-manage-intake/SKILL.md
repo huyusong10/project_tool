@@ -10,6 +10,7 @@ description: 通过 MCP 将原始需求直接录入 project-manage，按需拆�
 ## 录入
 
 1. 用 query_requirements、list_work_items 查询已有记录，详情用 get_requirement、get_work_item。分页读完相关结果，不按相似标题直接覆盖。
+   取消工作项会永久移除当前工作和依赖，历史进展保留名称，不支持恢复；需要时重新添加。先核对 `get_work_item.cancellationImpact`，有依赖或里程碑关联时携带 `expectedDependencyRevision=cancellationImpact.revision` 调用 `cancel_work_item`。不自动连接前后工作，受影响的未达成里程碑改为人工确认。`reopen_work_item` 仅用于已完成工作返工。
 2. 需求说明 background 保留原始内容，referenceLinks 保存真实来源链接列表（每项 title/url/kind，名称自由填写，kind 为 document/task/other），acceptanceCriteria 写可观察的完成标准。来源未知可留空；不编造人员、日期或原文。
 3. 小批量用 create_requirement；批量用 preview_requirement_import → apply_requirement_import。导入格式为 formatVersion=3，仅包含 requirements 和可选 dependencies；工作项放在需求的 workItems 中。示例见 assets/log-intake.json、assets/org-intake.json。
 4. 更新已有需求使用 action=update、真实 existingId 和读取的 expectedVersion。省略的字段保持原值，按字段类型显式传 null 或空字符串才清空；已结束需求使用详情纠错。重复内容选择跳过或更新，只有明确是另一件事时才确认另建。

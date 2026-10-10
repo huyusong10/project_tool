@@ -176,6 +176,8 @@ function AnalyticsPanelCard({ panel, result, asOfDate, projectId, loading, editi
   onDelete?: () => void;
   retry?: () => void;
 }) {
+  const resolutionNote = panel.dataset === 'issues' && (panel.measure === 'average_resolution_days' || panel.secondaryMeasure === 'average_resolution_days')
+    ? '发现至解决按工作日计算，包含首尾日；每个问题至少计1个工作日。' : null;
   return <article className={`analytics-panel analytics-panel-${panel.size}${editing ? " is-editing" : ""}`}>
     <header>
       <div>{children}<h2>{panel.title}</h2><span>{analyticsTimeLabel(panel, result, asOfDate)}</span></div>
@@ -185,7 +187,10 @@ function AnalyticsPanelCard({ panel, result, asOfDate, projectId, loading, editi
         <Button iconOnly variant="secondary" tone="danger" className="danger" aria-label={`删除${panel.title}`} title="删除" disabled={disabled} onClick={onDelete}><Trash2 size={14} /></Button>
       </div>}
     </header>
-    <div className="analytics-panel-body"><PanelContent panel={panel} result={result} loading={loading} retry={retry} linkRequirements={!editing && Boolean(projectId)} /></div>
+    <div className="analytics-panel-body">
+      {resolutionNote && <p className="analytics-chart-unit">{resolutionNote}</p>}
+      <PanelContent panel={panel} result={result} loading={loading} retry={retry} linkRequirements={!editing && Boolean(projectId)} />
+    </div>
     {!editing && projectId && panel.dataset === 'people' && panel.measure === 'current_concurrency' && <footer className="analytics-panel-link"><ButtonLink variant="link" to={'/people?' + new URLSearchParams({ projectId, view: 'analysis' })}>查看人员工作安排</ButtonLink></footer>}
   </article>;
 }

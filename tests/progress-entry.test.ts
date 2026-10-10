@@ -95,11 +95,11 @@ for (const protocol of ['REST', 'MCP'] as const) {
   });
   it.each(['not_started', 'in_progress', 'completed', 'cancelled'])(`${protocol}与表单一致地处理%s工作项，始终保留关联`, async (status) => {
     const before = await fixture(status);
-    const item = before.workItems[0];
+    const item = before.workItems[0] || {id:before.progressUpdates!.find(entry=>entry.eventType==='cancel')!.workItemId!,version:1};
     const content = `${protocol}记录${status}工作项`;
     const response = await write(protocol, before.id, { content, workItemId: item.id, expectedVersion: item.version, ...(status === 'in_progress' ? { workItemPercent: 60 } : {}) });
     if (['completed', 'cancelled'].includes(status)) {
-      expect(response.statusCode).toBe(409);
+      expect(response.statusCode).toBe(status==='cancelled'?404:409);
       expect(await detail(before.id)).toEqual(before);
       return;
     }

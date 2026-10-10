@@ -5,7 +5,7 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, expect, it } from 'vitest';
 import type { FastifyInstance } from 'fastify';
-import type { RequirementRecord, WorkItemRecord } from '../src/server/services/requirements';
+import type { RequirementRecord } from '../src/server/services/requirements';
 import type { Requirement } from '../src/client/types';
 import { addCalendarDays, todayIso } from '../src/shared/domain';
 
@@ -98,7 +98,7 @@ it('按计划补录工作项、整条需求原子完成，重复提交不生成�
   expect(result.statusCode, result.body).toBe(200);
   expect(result.json()).toMatchObject({ status: 'completed', progress: 100 });
   expect(withoutForecastRevision(result.json().workItems.find((item: { id: string }) => item.id === first.id))).toEqual(withoutForecastRevision(completed.json()));
-  expect(result.json().workItems.find((item: { id: string }) => item.id === cancelled.id).status).toBe('cancelled');
+  expect(result.json().workItems.find((item: { id: string }) => item.id === cancelled.id)).toBeUndefined();
   const repeated = await post(`/api/requirements/${requirement.id}/complete-as-planned`, { expectedVersion: requirement.version });
   expect(repeated.statusCode).toBe(409);
   expect((await getRequirement(requirement.id))).toEqual(result.json());
@@ -148,14 +148,13 @@ it('调整旧版非工作日排期时以需求锚点统一重算', async () => {
   ]);
 });
 
-it('整体调期不改写已取消工作项的历史计划', async () => {
+it('整体调期不会重新加入已取消的工作项', async () => {
   let requirement = await createHistory();
   const cancelledSource = requirement.workItems!.at(-1)!;
   const cancelled = await post(`/api/work-items/${cancelledSource.id}/cancel`, {
     expectedVersion: cancelledSource.version, reason: '保留取消时的历史计划',
   });
   expect(cancelled.statusCode, cancelled.body).toBe(200);
-  const cancelledSnapshot = cancelled.json<WorkItemRecord>();
   requirement = await getRequirement(requirement.id);
   const activeBefore = requirement.workItems!.find((item) => item.status !== 'cancelled')!;
 
@@ -164,7 +163,7 @@ it('整体调期不改写已取消工作项的历史计划', async () => {
     reason: '调整剩余有效工作项计划',
   });
   expect(adjusted.statusCode, adjusted.body).toBe(200);
-  expect(withoutForecastRevision(adjusted.json<RequirementRecord>().workItems!.find((item) => item.id === cancelledSnapshot.id)!)).toEqual(withoutForecastRevision(cancelledSnapshot));
+  expect(adjusted.json<RequirementRecord>().workItems!.find(item=>item.id===cancelledSource.id)).toBeUndefined();
   expect(adjusted.json<RequirementRecord>().workItems!.find((item) => item.id === activeBefore.id)?.plannedStart)
     .not.toBe(activeBefore.plannedStart);
 });

@@ -1,7 +1,21 @@
 import { describe, expect, it } from 'vitest';
-import { jiraKeyFromUrl, jiraKeysFromTitle, normalizedJiraTitle } from '../src/shared/jira-links';
+import { jiraKeyFromUrl, jiraKeysFromTitle, jiraReferenceEntries, normalizedJiraTitle } from '../src/shared/jira-links';
 
 describe('Jira reference recognition', () => {
+  it('builds unique entries from explicit same-site links and preserves the Jira context path', () => {
+    expect(jiraReferenceEntries([
+      { url: 'https://jira.test/jira/browse/dcim-33?focusedCommentId=5' },
+      { url: 'https://jira.test/jira/issues/?selectedIssue=DCIM-33' },
+      { url: 'https://jira.test/jira/browse/DCIM-34' },
+      { url: 'https://other.test/browse/DCIM-35' },
+    ], 'https://jira.test/jira/')).toEqual([
+      { key: 'DCIM-33', url: 'https://jira.test/jira/browse/DCIM-33', source: 'reference' },
+      { key: 'DCIM-34', url: 'https://jira.test/jira/browse/DCIM-34', source: 'reference' },
+    ]);
+    for (const site of ['file://jira.test', 'https://user:password@jira.test', 'invalid']) {
+      expect(jiraReferenceEntries([{ url: site + '/browse/DCIM-33' }], site)).toEqual([]);
+    }
+  });
   it.each([
     '/browse/dcim-33?focusedCommentId=5#comment-5',
     '/projects/DCIM/issues/DCIM-33?filter=allopenissues',

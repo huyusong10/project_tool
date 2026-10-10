@@ -12,6 +12,7 @@ export const createWorkItemInputSchema=z.object(contracts.createWorkItemInputSch
 export const updateWorkItemInputSchema=z.object(contracts.updateWorkItemInputSchema.shape).omit(retiredCoordination).strict();
 export const startWorkItemInputSchema=z.object({ownerId:contracts.optionalIdSchema,requirementOwnerId:contracts.optionalIdSchema,expectedRequirementVersion:contracts.expectedVersionSchema.optional(),expectedVersion:contracts.expectedVersionSchema,reason:contracts.optionalTextSchema}).strict();
 export const reasonCommandSchema=z.object({expectedVersion:contracts.expectedVersionSchema,reason:z.string().trim().optional()}).strict();
+export const cancelWorkItemInputSchema=reasonCommandSchema.extend({expectedDependencyRevision:z.number().int().nonnegative().optional()});
 export const rescheduleRequirementInputSchema=z.object({expectedVersion:contracts.expectedVersionSchema,scheduleMode:z.enum(['start','deadline']),plannedStart:contracts.optionalDateSchema,plannedEnd:contracts.optionalDateSchema,reason:contracts.optionalTextSchema}).strict();
 export const editorEntityChange=paths.editorEntityChange.extend({data:paths.editorEntityChange.shape.data.unwrap().omit({...retiredRequirement,...retiredCoordination,reviewForecast:true}).strict().default({})});
 export const pathEstimateInput=z.object(paths.pathEstimateInput.shape).omit({unblockEstimate:true,reviewForecast:true}).strict();

@@ -4,11 +4,13 @@ import { expect, it } from 'vitest';
 it('执行与链接更新按命令影响刷新，保留无关列表', () => {
   const client = new QueryClient();
   try {
-    for (const key of [keys.requirement('a'), keys.requirement('b'), keys.issues, keys.featureRelations, keys.paths, keys.auditSearch, keys.accounts]) client.setQueryData(key, {});
+    for (const key of [keys.requirement('a'), keys.requirement('b'), keys.issues, keys.featureRelations, keys.paths, keys.auditSearch, keys.accounts, keys.myWork, keys.dashboard]) client.setQueryData(key, {});
     invalidateRequirementViews(client, 'a', 'links');
     expect(client.getQueryState(keys.requirement('a'))?.isInvalidated).toBe(true);
     expect(client.getQueryState(keys.requirement('b'))?.isInvalidated).toBe(false);
     expect(client.getQueryState(keys.paths)?.isInvalidated).toBe(true);
+    expect(client.getQueryState(keys.myWork)?.isInvalidated).toBe(true);
+    expect(client.getQueryState(keys.dashboard)?.isInvalidated).toBe(true);
     expect(client.getQueryState(keys.accounts)?.isInvalidated).toBe(false);
     invalidateRequirementViews(client, 'a', 'execution');
     expect(client.getQueryState(keys.accounts)?.isInvalidated).toBe(true);

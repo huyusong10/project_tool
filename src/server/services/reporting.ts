@@ -109,8 +109,8 @@ function readDashboard(projectId?:string,asOfDate=todayIso()) {
   const requirements = listRequirements({ projectId }, asOfDate);
   const recentProgress = rows<{ id: string; requirementId: string; workItemId: string | null; workItemTitle: string | null; percent: number; workItemPercent: number | null; content: string; eventType: string; createdAt: string; updatedAt: string }>(`
     SELECT id, requirementId, workItemId, workItemTitle, percent, workItemPercent, content, eventType, createdAt, updatedAt FROM (
-      SELECT u.id, u.requirement_id AS requirementId, u.work_item_id AS workItemId,
-        w.title AS workItemTitle, u.percent, u.work_item_percent AS workItemPercent, u.content, u.event_type AS eventType,
+      SELECT u.id, u.requirement_id AS requirementId, COALESCE(u.work_item_id,u.deleted_work_item_id) AS workItemId,
+        COALESCE(w.title,u.deleted_work_item_title) AS workItemTitle, u.percent, u.work_item_percent AS workItemPercent, u.content, u.event_type AS eventType,
         u.created_at AS createdAt, u.updated_at AS updatedAt,
         u.rowid AS writeOrder,
         ROW_NUMBER() OVER (PARTITION BY u.requirement_id ORDER BY u.created_at DESC, u.rowid DESC) AS rank

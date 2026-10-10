@@ -1,5 +1,5 @@
 
-import { createWorkItemInputSchema, updateWorkItemInputSchema, startWorkItemInputSchema, reasonCommandSchema } from "../../shared/workflow-contracts";
+import { createWorkItemInputSchema, updateWorkItemInputSchema, startWorkItemInputSchema, cancelWorkItemInputSchema } from "../../shared/workflow-contracts";
 
 import { isCoordinationEdit, assertCoordinationAccess } from "../services/blocker-coordination";
 
@@ -41,11 +41,11 @@ export function registerWorkItemsTools(registerTool: ToolRegistrar, actor: Autho
     assertWorkItemParticipantOrManager(actor, id); return json(completeWorkItem(id, input, actor));
   });
 
-  registerTool('cancel_work_item', { description: '取消工作项', inputSchema: reasonCommandSchema.safeExtend({ id: idSchema }) }, async ({ id, ...input }) => {
+  registerTool('cancel_work_item', { description: '取消并永久移除工作项，保留历史名称和进展，不可恢复。get_work_item 的 cancellationImpact 列出移除的依赖及改为人工确认的里程碑；存在关联时须提交其中 revision 为 expectedDependencyRevision，不自动连接前后工作。', inputSchema: cancelWorkItemInputSchema.safeExtend({ id: idSchema }) }, async ({ id, ...input }) => {
     assertWorkItemRequirementOwnerOrManager(actor, id); return json(cancelWorkItem(id, input, actor));
   });
 
-  registerTool('reopen_work_item', { description: '需求负责人或项目经理重开已完成或已取消工作项，并使已完成需求恢复执行', inputSchema: reopenWorkItemInputSchema.safeExtend({ id: idSchema }) }, async ({ id, ...input }) => {
+  registerTool('reopen_work_item', { description: '需求负责人或项目经理重开已完成工作项，并使已完成需求恢复执行；已取消工作项已移除，需要时新建', inputSchema: reopenWorkItemInputSchema.safeExtend({ id: idSchema }) }, async ({ id, ...input }) => {
     assertWorkItemRequirementOwnerOrManager(actor, id); return json(reopenWorkItem(id, input, actor));
   });
 

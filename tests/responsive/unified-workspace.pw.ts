@@ -10,6 +10,20 @@ const row=(page:Page,id:string)=>page.locator('[data-object-id="'+id+'"]');
 const create=async(page:Page,name:string)=>{await page.getByRole('button',{name:'新建对象',exact:true}).click();await page.getByRole('menu',{name:'新建对象'}).getByRole('button',{name,exact:true}).click();};
 const moveRow=async(page:Page,id:string)=>{await row(page,id).locator('.outline-row-actions button').click();await page.getByRole('menu').getByRole('button',{name:'调整归属…',exact:true}).click();};
 
+test('关系图名称键盘打开资料，下一级按钮保持范围导航',async({page})=>{
+  const f=await phaseFixture(page);
+  await page.goto('/?'+new URLSearchParams({projectId:f.projectId,workspaceView:'graph',scopeType:'phase',scopeId:f.phases[1].id}));
+  await expect(page.locator('[data-layout-ready=true]')).toBeVisible();
+  const node=page.locator('.react-flow__node[data-id="'+f.testing.id+'"]'),detail=page.locator('.modal-card-workspace[role=dialog]');
+  await node.getByRole('button',{name:f.testing.title,exact:true}).press('Enter');await expect(detail).toBeVisible();
+  expect(new URL(page.url()).searchParams.get('scopeId')).toBe(f.phases[1].id);
+  await closeGraphProperties(page);await node.getByRole('button',{name:f.testing.title,exact:true}).press('Space');await expect(detail).toBeVisible();
+  await closeGraphProperties(page);await node.getByRole('button',{name:'进入'+f.testing.title,exact:true}).press('Enter');
+  await expect.poll(()=>new URL(page.url()).searchParams.get('scopeId')).toBe(f.testing.id);await expect(detail).toHaveCount(0);
+  await expect(page.locator('[data-layout-ready=true]')).toBeVisible();
+  await page.getByRole('button',{name:'测试',exact:true}).press('Enter');await expect(detail).toContainText('工作项');
+});
+
 test('已选需求被他人移出当前 Phase 后，取消和再次移动均不覆盖他人归属',async({page})=>{
   const f=await phaseFixture(page),selection=page.getByRole('region',{name:'批量操作'});
   await page.goto('/?'+new URLSearchParams({projectId:f.projectId,workspaceView:'list',scopeType:'phase',scopeId:f.phases[1].id}));
@@ -99,10 +113,33 @@ test('清单直接创建 Phase，移动与撤销，键盘排序和筛选保护',
   await row(page,'phase:'+f.phases[2].id).getByRole('button',{name:'拖动Phase 3',exact:true}).focus();await page.keyboard.press('Alt+ArrowUp');await expect(page.getByRole('status').filter({hasText:'调整顺序已保存'})).toBeVisible();await page.getByRole('searchbox',{name:'筛选清单'}).fill('Phase');await expect(page.locator('.outline-help')).toContainText('行间排序拖拽已停用');
 });
 
+test('键盘连续排序保留焦点，保存与刷新期间不重复提交',async({page})=>{
+  const f=await phaseFixture(page);await page.goto('/features?featureId='+f.feature.id+'&view=feature');
+  const handle=row(page,'phase:'+f.phases[2].id).getByRole('button',{name:'拖动Phase 3',exact:true});
+  let releaseSave!:()=>void,releaseRead!:()=>void,writes=0,refreshing=false;
+  const saveGate=new Promise<void>(resolve=>{releaseSave=resolve;}),readGate=new Promise<void>(resolve=>{releaseRead=resolve;});
+  await page.route('**'+f.base+'/outline-order',async route=>{writes++;if(writes===1){const response=await route.fetch();await saveGate;refreshing=true;await route.fulfill({response});}else await route.continue();});
+  await page.route('**/api/dashboard*',async route=>{if(refreshing)await readGate;await route.continue();});
+  await handle.focus();await page.keyboard.press('Alt+ArrowUp');await expect.poll(()=>writes).toBe(1);
+  await expect(handle).toBeFocused();await expect(handle).toHaveAttribute('aria-disabled','true');
+  await page.keyboard.press('Alt+ArrowDown');expect(writes).toBe(1);
+  releaseSave();await expect(page.locator('.outline-notice')).toContainText('调整顺序已保存');
+  await expect(handle).toBeFocused();await expect(handle).toHaveAttribute('aria-disabled','true');
+  await page.keyboard.press('Alt+ArrowDown');expect(writes).toBe(1);releaseRead();
+  const phases=page.locator('.outline-table tr[data-object-kind=phase]');
+  await expect.poll(()=>phases.evaluateAll(rows=>rows.map(r=>r.getAttribute('data-object-id')))).toEqual([f.phases[0],f.phases[2],f.phases[1]].map(p=>'phase:'+p.id));
+  await expect(handle).toHaveAttribute('aria-disabled','false');await expect(handle).toBeFocused();
+  await page.keyboard.press('Alt+ArrowDown');await expect.poll(()=>writes).toBe(2);
+  await expect.poll(()=>phases.evaluateAll(rows=>rows.map(r=>r.getAttribute('data-object-id')))).toEqual(f.phases.map(p=>'phase:'+p.id));
+  await expect(handle).toBeFocused();await page.reload();
+  await expect.poll(()=>phases.evaluateAll(rows=>rows.map(r=>r.getAttribute('data-object-id')))).toEqual(f.phases.map(p=>'phase:'+p.id));
+});
+
 test('排序响应丢失后先核对正式结果，刷新不会重复提交',async({page})=>{
   const f=await phaseFixture(page);await page.goto('/features?featureId='+f.feature.id+'&view=feature');let writes=0;
   await page.route('**'+f.base+'/outline-order',async route=>{writes++;await route.fetch();await route.abort('failed');});
   await row(page,'phase:'+f.phases[2].id).getByRole('button',{name:'拖动Phase 3',exact:true}).focus();await page.keyboard.press('Alt+ArrowUp');await expect(page.locator('.outline-notice')).toContainText('提交结果待核对');
+  await expect(row(page,'phase:'+f.phases[2].id).getByRole('button',{name:'拖动Phase 3',exact:true})).toBeFocused();await page.keyboard.press('Alt+ArrowDown');expect(writes).toBe(1);
   await page.reload();await expect(page.locator('.outline-notice')).toContainText('提交结果待核对');await page.getByRole('button',{name:'读取正式结果并核对',exact:true}).click();const dialog=page.getByRole('dialog').last();await expect(dialog).toContainText('Phase 3');await dialog.getByRole('button',{name:'确认已生效，结束核对'}).click();expect(writes).toBe(1);await expect(page.locator('.outline-notice')).not.toContainText('待核对');
 });
 

@@ -26,7 +26,7 @@ function validatePlannedCompletion(requirement: RequirementRecord, items: WorkIt
   assertTransition(requirement.status, ['planning', 'not_started', 'in_progress', 'blocked', 'pending_acceptance'], '补录完成');
   const history = new Set(rows<{ workItemId: string }>(
     `SELECT DISTINCT work_item_id AS workItemId FROM progress_updates
-     WHERE requirement_id=? AND work_item_id IS NOT NULL AND event_type NOT IN ('note','correction')`, requirement.id,
+     WHERE requirement_id=? AND COALESCE(work_item_id,deleted_work_item_id) IS NOT NULL AND event_type NOT IN ('note','correction')`, requirement.id,
   ).map((entry) => entry.workItemId));
   const today = todayIso();
   for (const item of items) {

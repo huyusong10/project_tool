@@ -1,3 +1,4 @@
+import { removeWorkItemRecord } from './work-item-removal';
 import { isTerminalRequirementStatus } from '../../shared/domain';
 
 import { assertHistoricalProjectPeople, changeSnapshot } from './support';
@@ -330,7 +331,7 @@ export function correctRequirement(id: string, input: JsonObject, actor: Actor) 
     fail('需求已有执行记录，只能更换负责人，不能清空负责人', 'DEPENDENCY_CONFLICT', 409);
   }
   const supersedesId = nullableText(input.supersedesId);
-  if (supersedesId && !row('SELECT id FROM progress_updates WHERE id=? AND requirement_id=? AND work_item_id IS NULL', supersedesId, id)) {
+  if (supersedesId && !row('SELECT id FROM progress_updates WHERE id=? AND requirement_id=? AND work_item_id IS NULL AND deleted_work_item_id IS NULL', supersedesId, id)) {
     fail('纠错引用记录不存在或不是当前需求的需求级记录');
   }
   const factsChanged = (input.phaseId!==undefined&&(input.phaseId||null)!==(current.phaseId||null)) || (input.featureId!==undefined&&(input.featureId||null)!==(current.featureId||null))||title !== current.title || priority !== current.priority || ownerId !== current.ownerId
@@ -425,9 +426,12 @@ export function cancelRequirement(id: string, input: JsonObject, actor: Actor) {
   assertTransition(current.status, ['planning', 'not_started', 'in_progress', 'blocked', 'pending_acceptance'], '取消');
   const reason = nullableText(input.reason) || '取消需求'; const now = nowIso();
   getDatabaseContext().sqlite.transaction(() => {
-    getDatabaseContext().sqlite.prepare(`UPDATE work_items SET status='cancelled', progress=min(progress,99), actual_end=NULL,
-      blocked_at=NULL, blocked_reason=NULL, version=version+1, updated_at=?
-      WHERE requirement_id=? AND status NOT IN ('completed','cancelled')`).run(now, id);
+    for (const work of current.workItems || []) if (work.status !== 'completed') {
+      appendRequirementEvent(id,'cancel',`随需求取消并移除工作项：${work.title}`,actor,work.id,work.progress,null,now);
+      const removedDependencies = removeWorkItemRecord(work.id);
+      audit(actor,'cancel','work_item',work.id,JSON.stringify({title:work.title,removedDependencies}),current.projectId);
+    }
+    if (current.actualStart) getDatabaseContext().sqlite.prepare('UPDATE requirements SET actual_start=? WHERE id=?').run(current.actualStart,id);
     const changed = getDatabaseContext().sqlite.prepare(`UPDATE requirements SET status='cancelled', accepted_at=NULL, accepted_by_account_id=NULL,
       version=version+1, updated_at=? WHERE id=? AND version=?`).run(now, id, current.version);
     assertVersionedWrite(changed, '需求');

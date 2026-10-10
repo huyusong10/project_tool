@@ -603,7 +603,7 @@ describe('自动化项目管理API', () => {
     expect(after.plannedEnd).toBe(item.plannedEnd);
   });
 
-  it('需求排期随工作项编辑、新增、删除、取消和重开统一聚合', async () => {
+  it('需求排期随工作项编辑、新增、删除、取消和重新添加统一聚合', async () => {
     const flow = await app.inject({ method: 'POST', url: '/api/templates', headers: { cookie }, payload: {
       projectId, name: `排期聚合-${randomUUID().slice(0, 6)}`, items: [
         { title: '设计', startOffsetDays: 0, durationDays: 2, sortOrder: 0 },
@@ -648,10 +648,8 @@ describe('自动化项目管理API', () => {
     aggregate = (await app.inject({ method: 'GET', url: `/api/requirements/${created.json().id}`, headers: { cookie } })).json();
     expect(aggregate.plannedStart).toBe(second.plannedStart);
 
-    const reopened = await app.inject({ method: 'POST', url: `/api/work-items/${first.id}/reopen`, headers: { cookie }, payload: {
-      reason: '恢复前置项', expectedVersion: cancelled.json().version,
-    } });
-    expect(reopened.statusCode).toBe(200);
+    const replacement = await app.inject({method:'POST',url:`/api/requirements/${created.json().id}/work-items`,headers:{cookie},payload:{title:first.title,plannedStart:'2026-08-17',plannedEnd:first.plannedEnd,expectedVersion:aggregate.version}});
+    expect(replacement.statusCode).toBe(200);expect(replacement.json().id).not.toBe(first.id);
     aggregate = (await app.inject({ method: 'GET', url: `/api/requirements/${created.json().id}`, headers: { cookie } })).json();
     expect(aggregate.plannedStart).toBe('2026-08-17');
 
@@ -662,7 +660,7 @@ describe('自动化项目管理API', () => {
     expect(shifted.statusCode).toBe(200);
     expect(shifted.json()).toMatchObject({ plannedStart: '2026-09-07', scheduleComplete: true });
     expect(shifted.json().workItems).toEqual(expect.arrayContaining([
-      expect.objectContaining({ id: first.id, plannedStart: '2026-09-07' }),
+      expect.objectContaining({ id: replacement.json().id, plannedStart: '2026-09-07' }),
       expect.objectContaining({ id: second.id, plannedStart: addBusinessDays(second.plannedStart, delta), plannedEnd: addBusinessDays(second.plannedEnd, delta) }),
     ]));
   });
@@ -707,18 +705,15 @@ describe('自动化项目管理API', () => {
       const nextLogin = await app.inject({ method: 'POST', url: '/api/login', payload: { username: 'admin', password: '41_xc7q0qOjo4Inw!' } });
       const nextSetCookie = nextLogin.headers['set-cookie'];
       const nextCookie = (Array.isArray(nextSetCookie) ? nextSetCookie[0] : nextSetCookie!).split(';')[0];
-      const cancelledItem = cancelled.json().workItems.find((entry: { id: string }) => entry.id === item.id);
-      expect(cancelledItem.cancelledAt).toBe('2026-09-07');
-      const invalidCorrection = await app.inject({ method: 'POST', url: `/api/work-items/${item.id}/correct`, headers: { cookie: nextCookie }, payload: {
-        actualStart: '2026-09-08', reason: '错误地移到取消之后', expectedVersion: cancelledItem.version,
-      } });
-      expect(invalidCorrection.statusCode).toBe(400);
-      expect(invalidCorrection.json().error).toContain('不能晚于取消日期');
+      expect(cancelled.json().workItems.some((entry:{id:string})=>entry.id===item.id)).toBe(false);
+      expect(cancelled.json().progressUpdates).toEqual(expect.arrayContaining([expect.objectContaining({workItemId:item.id,eventType:'start'}),expect.objectContaining({workItemId:item.id,eventType:'cancel'})]));
+      const invalidCorrection = await app.inject({method:'POST',url:`/api/work-items/${item.id}/correct`,headers:{cookie:nextCookie},payload:{actualStart:'2026-09-08',expectedVersion:item.version}});
+      expect(invalidCorrection.statusCode).toBe(404);
       const { getPeopleConcurrency } = await import('../src/server/services');
       const result = getPeopleConcurrency({ projectId, personId, from: '2026-09-04', to: '2026-09-08' });
       const itemIds = (date: string) => result.people[0].days.find((day) => day.date === date)?.items.map((entry) => entry.id) || [];
-      expect(itemIds('2026-09-04')).toContain(item.id);
-      expect(itemIds('2026-09-07')).toContain(item.id);
+      expect(itemIds('2026-09-04')).not.toContain(item.id);
+      expect(itemIds('2026-09-07')).not.toContain(item.id);
       expect(itemIds('2026-09-08')).not.toContain(item.id);
     } finally {
       vi.setSystemTime(new Date('2026-09-04T04:00:00Z'));
@@ -791,7 +786,7 @@ describe('自动化项目管理API', () => {
     await app.inject({ method: 'DELETE', url: `/api/requirements/${disposableRequirementId}`, headers: { cookie }, payload: { expectedVersion: cancelled.json().version } });
     const archivePreview = (await app.inject({ method: 'GET', url: '/api/archives', headers: { cookie } })).json();
     expect(archivePreview.requirements.find((item: { id: string }) => item.id === disposableRequirementId))
-      .toMatchObject({ workItemCount: 1, progressCount: 1, linkedIssueCount: 0 });
+      .toMatchObject({ workItemCount: 0, progressCount: 2, linkedIssueCount: 0 });
     const requirementArchive = archivePreview.requirements.find((item: { id: string }) => item.id === disposableRequirementId);
     expect((await app.inject({ method: 'DELETE', url: `/api/archives/requirements/${disposableRequirementId}`, headers: { cookie }, payload: {
       confirmName: '待永久删除需求', expectedDeletedAt: requirementArchive.deletedAt,

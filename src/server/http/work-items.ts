@@ -1,6 +1,6 @@
 
 
-import { updateWorkItemInputSchema, startWorkItemInputSchema, reasonCommandSchema } from "../../shared/workflow-contracts";
+import { updateWorkItemInputSchema, startWorkItemInputSchema, reasonCommandSchema, cancelWorkItemInputSchema } from "../../shared/workflow-contracts";
 
 import { isCoordinationEdit, assertCoordinationAccess } from "../services/blocker-coordination";
 
@@ -42,7 +42,7 @@ export function registerWorkItemsRoutes(app: FastifyInstance) {
 
   app.post('/api/work-items/:id/cancel', { preHandler: requireReady }, async (request) => {
     const id = idOf(request); const actor = actorFromRequest(request); assertWorkItemRequirementOwnerOrManager(actor, id);
-    return cancelWorkItem(id, parsedBody(request, reasonCommandSchema), actor);
+    return cancelWorkItem(id, parsedBody(request, cancelWorkItemInputSchema), actor);
   });
 
   app.post('/api/work-items/:id/reopen', { preHandler: requireReady }, async (request) => {

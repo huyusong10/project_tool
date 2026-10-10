@@ -137,13 +137,14 @@ export function listActionItems(
     const pathBlocker=pathBlockers.get(workItem.id);
     if(pathBlocker)reasonCodes.push('path_blocked');
     if (!reasonCodes.length) continue;
+    const needsAssignment = reasonCodes.some(reason => reason === 'unassigned' || reason === 'owner_unavailable');
     items.push(makeItem({
       sourceType: 'work_item', sourceId: workItem.id, projectId: filters.projectId,
       requirementId: workItem.requirementId, contextTitle: workItem.requirementTitle, title: workItem.title,
       reasonCodes, ownerId: workItem.ownerValid ? workItem.ownerId : null, ownerName: workItem.ownerValid ? workItem.ownerName : '项目经理', dueDate: workItem.plannedEnd,
       overdueWorkdays: isOverdueByWorkday(workItem.plannedEnd, today)
         ? Math.max(0, businessDayDelta(workItem.plannedEnd, today)) : 0,
-      targetPath: `/requirements/${workItem.requirementId}?workItemId=${encodeURIComponent(workItem.id)}${pathBlocker?'&view=path&target=project':''}`, updatedAt: workItem.updatedAt,
+      targetPath: `/requirements/${workItem.requirementId}?workItemId=${encodeURIComponent(workItem.id)}${needsAssignment?'&detailTab=basic':''}${pathBlocker?'&view=path&target=project':''}`, updatedAt: workItem.updatedAt,
     }));
   }
 

@@ -43,6 +43,7 @@ import { requireActiveProject, assertExpectedVersion, assertTransition, assertVe
 import { syncStoredRequirementState } from './requirement-state';
 
 import { appendRequirementEvent } from './requirement-events';
+import { removeWorkItemRecord, workItemCancellationImpact } from './work-item-removal';
 
 import { collaboratorIdsFromInput, assertProjectAssignees, syncWorkItemCollaborators } from './work-item-assignees';
 
@@ -186,13 +187,13 @@ function validateWorkItemActualDates(actualStart: string | null, actualEnd: stri
   if (actualEnd && actualEnd > today) fail('实际完成日期不能晚于今天');
 }
 
-function workItemEvent(id: string, action: 'start' | 'complete' | 'cancel', input: JsonObject, actor: Actor) {
+function workItemEvent(id: string, action: 'start' | 'complete', input: JsonObject, actor: Actor) {
   const allowedFields = new Set([
     'expectedVersion',
-    ...(action === 'complete' ? ['content'] : action === 'cancel' ? ['reason'] : action === 'start' ? ['reason','ownerId','requirementOwnerId','expectedRequirementVersion'] : []),
+    ...(action === 'complete' ? ['content'] : action === 'start' ? ['reason','ownerId','requirementOwnerId','expectedRequirementVersion'] : []),
   ]);
   if (Object.keys(input).some((key) => !allowedFields.has(key))) {
-    const labels = { start: '开始', complete: '完成', cancel: '取消' } as const;
+    const labels = { start: '开始', complete: '完成' } as const;
     fail(`${labels[action]}命令不能提交无关的工作项字段`);
   }
   const current = row<WorkItemRecord>(`${workItemSelect} WHERE w.id=?`, id);
@@ -200,10 +201,9 @@ function workItemEvent(id: string, action: 'start' | 'complete' | 'cancel', inpu
   const parentRequirement = getRequirement(current.requirementId);
   assertExpectedVersion(input, current.version);
   const today = todayIso(); const now = nowIso();
-  const labels = { start: '开始', complete: '完成', cancel: '取消' } as const;
+  const labels = { start: '开始', complete: '完成' } as const;
   const eventContent = action === 'complete' ? nullableText(input.content) || '完成工作项'
-    : action === 'cancel' ? nullableText(input.reason) || '取消工作项'
-        : action==='start' && nullableText(input.reason) ? requireText(input.reason,'执行例外原因') : `${labels[action]}工作项`;
+    : action==='start' && nullableText(input.reason) ? requireText(input.reason,'执行例外原因') : `${labels[action]}工作项`;
   const startOwner = input.ownerId ? String(input.ownerId) : current.ownerId;
   const requirementStartOwner = input.requirementOwnerId ? String(input.requirementOwnerId) : parentRequirement.ownerId;
   const assigning=action==='start'&&(input.ownerId!==undefined||input.requirementOwnerId!==undefined);
@@ -227,7 +227,6 @@ function workItemEvent(id: string, action: 'start' | 'complete' | 'cancel', inpu
     assertTransition(current.status, ['in_progress'], '完成');
     validateWorkItemActualDates(current.actualStart, today, today);
   }
-  if (action === 'cancel') assertTransition(current.status, ['not_started', 'in_progress'], '取消');
   getDatabaseContext().sqlite.transaction(() => {
     if(assigning){
       if(requirementStartOwner!==parentRequirement.ownerId)assertVersionedWrite(getDatabaseContext().sqlite.prepare('UPDATE requirements SET owner_id=? WHERE id=? AND version=?').run(requirementStartOwner,parentRequirement.id,parentRequirement.version),'需求');
@@ -236,9 +235,7 @@ function workItemEvent(id: string, action: 'start' | 'complete' | 'cancel', inpu
     }
     const changed = action === 'start'
       ? getDatabaseContext().sqlite.prepare(`UPDATE work_items SET actual_start=?, owner_id=?, status='in_progress', version=version+1, updated_at=? WHERE id=? AND version=?`).run(today, startOwner, now, id, current.version)
-      : action === 'complete'
-        ? getDatabaseContext().sqlite.prepare(`UPDATE work_items SET actual_end=?, progress=100, status='completed', blocked_at=NULL, blocked_reason=NULL, version=version+1, updated_at=? WHERE id=? AND version=?`).run(today, now, id, current.version)
-        : getDatabaseContext().sqlite.prepare(`UPDATE work_items SET status='cancelled', progress=min(progress,99), actual_end=NULL, blocked_at=NULL, blocked_reason=NULL, version=version+1, updated_at=? WHERE id=? AND version=?`).run(now, id, current.version);
+      : getDatabaseContext().sqlite.prepare(`UPDATE work_items SET actual_end=?, progress=100, status='completed', blocked_at=NULL, blocked_reason=NULL, version=version+1, updated_at=? WHERE id=? AND version=?`).run(today, now, id, current.version);
     assertVersionedWrite(changed, '工作项');
     syncStoredRequirementState(current.requirementId, now, true, parentRequirement.version);
     requireActiveProject(parentRequirement.projectId, true);
@@ -258,7 +255,32 @@ export const blockWorkItem = (_id: string, _input: JsonObject, _actor: Actor) =>
 
 export const unblockWorkItem = (_id: string, _input: JsonObject, _actor: Actor) => fail('解除阻塞操作已移除','WORKFLOW_RETIRED',410);
 
-export const cancelWorkItem = (id: string, input: JsonObject, actor: Actor) => workItemEvent(id, 'cancel', input, actor);
+export function cancelWorkItem(id: string, input: JsonObject, actor: Actor) {
+  if (Object.keys(input).some(key => !['expectedVersion','reason','expectedDependencyRevision'].includes(key))) fail('取消命令不能提交无关的工作项字段');
+  return getDatabaseContext().sqlite.transaction(() => {
+    const current = row<WorkItemRecord>(`${workItemSelect} WHERE w.id=?`, id);
+    if (!current) notFound('工作项不存在');
+    const requirement = getRequirement(current.requirementId);
+    requireActiveProject(requirement.projectId, true);
+    assertWorkItemRequirementOwnerOrManager(requireAuthorizationActor(actor), id);
+    assertExpectedVersion(input, current.version);
+    assertTransition(current.status, ['not_started','in_progress'], '取消');
+    if (['completed','cancelled','pending_acceptance'].includes(requirement.status)) fail('当前需求已锁定，不能取消工作项','TERMINAL_LOCKED');
+    const impact = workItemCancellationImpact(id);
+    if ((impact.dependencies.length || impact.milestones.length || input.expectedDependencyRevision !== undefined) && input.expectedDependencyRevision !== impact.revision) {
+      fail('请重新读取工作项的取消影响，确认将移除的依赖与需人工确认的里程碑后再提交','DEPENDENCY_CONFLICT',409);
+    }
+    const now = nowIso();
+    if (requirement.actualStart) getDatabaseContext().sqlite.prepare('UPDATE requirements SET actual_start=? WHERE id=?').run(requirement.actualStart,requirement.id);
+    const eventId = appendRequirementEvent(current.requirementId, 'cancel', `取消工作项：${current.title}；工作项已移除，需要时重新添加。${nullableText(input.reason) || ''}`, actor, id, current.progress, null, now);
+    const removedDependencies = removeWorkItemRecord(id);
+    const metrics = syncStoredRequirementState(current.requirementId, now, true, requirement.version);
+    getDatabaseContext().sqlite.prepare('UPDATE progress_updates SET percent=? WHERE id=?').run(metrics.progress,eventId);
+    audit(actor, 'cancel', 'work_item', id, JSON.stringify({title:current.title,reason:nullableText(input.reason),removedDependencies,milestones:impact.milestones}), requirement.projectId);
+    settleMilestones(requirement.projectId, actor);
+    return { ok: true, id, requirementId: current.requirementId, deleted: true };
+  })();
+}
 
 export function reopenWorkItem(id: string, input: JsonObject, actor: Actor) {
   if (Object.keys(input).some((key) => !['expectedVersion', 'reason', 'progress'].includes(key))) {
@@ -270,7 +292,7 @@ export function reopenWorkItem(id: string, input: JsonObject, actor: Actor) {
   if (requirement.status === 'cancelled') fail('已取消需求的工作项不能重开', 'DEPENDENCY_CONFLICT', 409);
   const item = requirement.workItems!.find((entry) => entry.id === id)!;
   assertProjectAssignees(current.requirementId, [requirement.ownerId, item.ownerId, ...item.collaborators.map((person) => person.id)], true);
-  assertExpectedVersion(input, current.version); assertTransition(current.status, ['completed', 'cancelled'], '重开');
+  assertExpectedVersion(input, current.version); assertTransition(current.status, ['completed'], '重开');
   const reason = nullableText(input.reason) || '重新打开工作项';
   const restoredProgress = input.progress === undefined ? (current.status === 'completed' ? 99 : Math.min(current.progress, 99)) : requireProgress(input.progress, '恢复进度');
   if (restoredProgress >= 100) fail('恢复进度必须小于100%');

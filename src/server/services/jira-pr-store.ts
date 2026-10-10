@@ -67,7 +67,7 @@ export function prCandidates(projectId: string, actor: Actor): PrCandidate[] {
   const requirements = prDb().prepare(`SELECT r.id AS requirementId,r.title,r.status AS localStatus,r.progress AS localProgress,r.feature_id AS featureId,f.name AS featureName,p.name AS phaseName,r.deleted_at AS archived,b.issue_key AS key
     FROM requirements r LEFT JOIN features f ON f.id=r.feature_id LEFT JOIN feature_phases p ON p.id=r.phase_id
     LEFT JOIN jira_bindings b ON b.requirement_id=r.id WHERE r.project_id=? ORDER BY f.sort_order,r.sort_order,r.created_at,r.id`).all(projectId) as Array<Omit<PrCandidate, 'sources' | 'archived'> & { archived: string | null }>;
-  const sources = prDb().prepare(`SELECT u.id,u.requirement_id AS requirementId,u.work_item_id AS workItemId,w.title AS workItemTitle,
+  const sources = prDb().prepare(`SELECT u.id,u.requirement_id AS requirementId,COALESCE(u.work_item_id,u.deleted_work_item_id) AS workItemId,COALESCE(w.title,u.deleted_work_item_title) AS workItemTitle,
     u.percent,u.work_item_percent AS workItemPercent,u.content,u.event_type AS eventType,u.supersedes_id AS supersedesId,
     u.created_by_account_id AS createdByAccountId,a.username AS createdByName,u.created_at AS createdAt,u.updated_at AS updatedAt,
     COALESCE(s.state,'pending') AS jiraSyncState,s.pr_id AS jiraPrId,s.comment_id AS jiraCommentId,s.synced_at AS jiraSyncedAt,

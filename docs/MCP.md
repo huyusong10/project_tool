@@ -128,7 +128,9 @@ SVG 是可保存的文本，不是浏览器截图；长说明展示摘要，完�
 
 ## 简化工作流
 
-需求和工作项统一使用 `not_started/in_progress/completed/cancelled`。缺少日期只提示未排期；全部有效工作项完成，需求自动完成。无工作项时用 `start_requirement`、`add_progress`、`complete_requirement`；有工作项时使用对应工作项操作。`return_requirement` 或 `reopen_work_item` 记录返工。
+需求使用 `not_started/in_progress/completed/cancelled`，当前工作项使用前三种状态。`cancel_work_item` 永久移除工作项和关联依赖，返回 `{ok,id,requirementId,deleted:true}`；原进展的工作项 ID 和名称保留为历史引用，不再指向可操作对象。先读取 `get_work_item.cancellationImpact`，存在依赖或里程碑关联时，将其 `revision` 作为 `expectedDependencyRevision` 提交；关联变化返回 409，重新读取影响后再决定。前后工作不会自动连接，受影响的未达成里程碑改为人工确认。取消后需要新建，`reopen_work_item` 仅用于已完成工作的返工。
+
+缺少日期只提示未排期；全部有效工作项完成，需求自动完成。取消最后一个工作项后需求保持未完成，并切回直接执行。无工作项时用 `start_requirement`、`add_progress`、`complete_requirement`；有工作项时使用对应工作项操作。`return_requirement` 记录需求返工。
 
 完成偏差使用实际工作结束日期。`acceptedAt` 只保留历史；`actualEnd` 表示实际完成，`observationEnd` 表示甘特统计截止日，两者不能互换。迁移后的原文与出处在需求 `sourceNotes` 中。
 

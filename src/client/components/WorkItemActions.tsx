@@ -1,4 +1,6 @@
 import * as requirementsApi from '../features/requirements/api';
+import * as workItemsApi from '../features/work-items/api';
+import type { WorkItemCancellationImpact } from '../../shared/api/work-items';
 import { useDeliveryForm } from '../use-delivery-form';
 import { useProjects } from '../app-context';
 import { Button } from './Button';
@@ -18,13 +20,13 @@ import { useToast } from "./Toast";
 import { Modal } from './Modal';
 
 type TextPanel = "complete";
-type Panel = TextPanel | "dates" | "menu" | "backfill";
-export type WorkItemReloadSnapshot = { item: WorkItem; updates: ProgressUpdate[] };
+type Panel = TextPanel | "dates" | "menu" | "backfill" | "cancel";
+export type WorkItemReloadSnapshot = { item: WorkItem | null; updates: ProgressUpdate[] };
 type ActionReceipt = {action:string; expectedVersion:number; body:Record<string,unknown>};
 type ExpectedOutcome = {successMessage?: string; request:ActionReceipt};
 
 function WorkActionSurface({anchorRef, panel, pending, onClose, children}: {anchorRef: RefObject<HTMLElement | null>; panel: Panel | null; pending: boolean; onClose: () => void; children: ReactNode}) {
-  if (panel && panel !== 'menu') return <Modal title={{complete: '完成工作项', dates: '修正日期与说明', backfill: '按期完成（历史补录）'}[panel]} width={480} closable={!pending} onClose={onClose}>{children}</Modal>;
+  if (panel && panel !== 'menu') return <Modal title={{complete: '完成工作项', dates: '修正日期与说明', backfill: '按期完成（历史补录）', cancel: '取消并移除工作项'}[panel]} width={480} closable={!pending} onClose={onClose}>{children}</Modal>;
   return <AnchoredPopover role={panel==='menu'?'menu':'dialog'} anchorRef={anchorRef} align={panel==='menu'?'end':'start'} open={panel !== null} onOutside={onClose} width={panel === 'menu' ? 210 : 390} className={panel === 'menu' ? 'action-menu' : ''}>{children}</AnchoredPopover>;
 }
 
@@ -51,7 +53,7 @@ export function WorkItemActions({
   presentation?: "compact" | "detail";
   onAction: (action: "start" | "complete" | "reopen", content: string | undefined, expectedVersion: number, expectedDependencyRevision?: number, assignment?: StartAssignment) => Promise<unknown>;
   onSaveDates?: (input: { actualStart: string | null; actualEnd: string | null; reason: string; supersedesId: string | null }, expectedVersion: number) => Promise<unknown>;
-  onCancel?: (reason: string, expectedVersion: number) => Promise<unknown>;
+  onCancel?: (reason: string, expectedVersion: number, expectedDependencyRevision: number) => Promise<unknown>;
   onCompleteAsPlanned?: (expectedVersion: number) => Promise<unknown>;
   onReload: () => Promise<WorkItemReloadSnapshot>;
   hasExecutionHistory?: boolean;
@@ -66,6 +68,8 @@ export function WorkItemActions({
   const client = useQueryClient();
   const [startRequirement,setStartRequirement]=useState<Requirement|null>(null);
   const [preparingStart,setPreparingStart]=useState(false);
+  const [cancelImpact,setCancelImpact]=useState<WorkItemCancellationImpact|null>(null);
+  const [loadingImpact,setLoadingImpact]=useState(false);
   const startReading=useRef(false);
   const toast = useToast();
   const { businessDate: today } = useBusinessDate();
@@ -118,6 +122,17 @@ export function WorkItemActions({
     try {
       const latest = await onReload();
       if (!mounted.current) return null;
+      if (!latest.item) {
+        receiptRef.current=null;setReceipt(null);clearReceipt();clearInput();
+        unknownVersion.current=null;setUnknownNeedsRead(false);setReviewRequired(false);setNeedsRefresh(false);
+        onWriteNeedsRecheckChange?.(false);changePanel(null);toast.success('工作项已移除，可在需求记录中核对历史');
+        return null;
+      }
+      if (panel === 'cancel') {
+        const work = await workItemsApi.workItemsById<WorkItem>(item.id);
+        if (!mounted.current) return null;
+        setCancelImpact(work.cancellationImpact || null);
+      }
       if (startRequirement) {
         const parent = await requirementsApi.requirementsById<Requirement>(item.requirementId);
         if (!mounted.current) return null;
@@ -177,16 +192,26 @@ export function WorkItemActions({
     }catch(e){if(mounted.current)setError(e instanceof Error?e.message:'读取负责人失败，请重试');}
     finally{startReading.current=false;if(mounted.current)setPreparingStart(false);}
   };
+  const prepareCancel = async () => {
+    if (submitting.current || loadingImpact || actionReviewBlocked) return;
+    openPanel('cancel');setCancelImpact(null);setLoadingImpact(true);
+    try {
+      const work = await workItemsApi.workItemsById<WorkItem>(item.id);
+      if (mounted.current) {setCancelImpact(work.cancellationImpact || null);setBaselineVersion(work.version);}
+    } catch (caught) {if (mounted.current) {setError(caught instanceof Error ? caught.message : '读取取消影响失败');setNeedsRefresh(true);}}
+    finally {if (mounted.current) setLoadingImpact(false);}
+  };
   const canCorrect = canManage && onSaveDates && item.status !== "not_started";
   const canBackfill = !stateChangesDisabled && canManage && onCompleteAsPlanned && item.status === "not_started";
-  const canOpenMenu = Boolean(extraMenu) || canCorrect || canBackfill || Boolean(!stateChangesDisabled && canManage && (["completed", "cancelled"].includes(item.status) || onCancel));
+  const canOpenMenu = Boolean(extraMenu) || canCorrect || canBackfill || Boolean(!stateChangesDisabled && canManage && (item.status === "completed" || onCancel));
   const backfillUnavailable = !item.plannedStart || !item.plannedEnd ? "请先补齐计划开始和完成日期。"
     : item.plannedStart > item.plannedEnd ? "计划完成日期不能早于开始日期。"
     : item.plannedEnd > today ? "计划尚未结束，暂不能补录完成。"
     : hasExecutionHistory ? "工作项已有执行记录，请使用正常完成或修正。" : "";
-  const textPanel = panel && panel !== "dates" && panel !== "menu" && panel !== "backfill" ? panel : null;
+  const textPanel = panel === 'complete' ? panel : null;
   const operationUnavailable = panel === "dates" ? item.status === "not_started"
     : panel === "backfill" ? item.status !== "not_started"
+    : panel === 'cancel' ? !['not_started','in_progress'].includes(item.status)
     : textPanel === "complete" ? item.status !== "in_progress"
     : false;
   const blocked = needsRefresh || operationUnavailable || reviewRequired;
@@ -216,8 +241,8 @@ export function WorkItemActions({
 
   const datesAction = canCorrect && <Button aria-label="修正日期与说明" title="修正日期与说明" variant={presentation==='detail'?'ghost':'menu'} size="compact" disabled={pending || actionReviewBlocked || needsRefresh} type="button" onClick={() => openPanel("dates")}>{presentation!=="detail"&&<CalendarDays size={14} />}修正</Button>;
   const backfillAction = canBackfill && <Button aria-label="按期完成（历史补录）" title="按期完成（历史补录）" variant={presentation==='detail'?'ghost':'menu'} size="compact" disabled={pending || actionReviewBlocked || needsRefresh} type="button" onClick={() => openPanel("backfill")}>{presentation!=="detail"&&<Check size={14} />}补录</Button>;
-  const reopenAction = !stateChangesDisabled && canManage && ["completed", "cancelled"].includes(item.status) && <Button aria-label="重开/返工" title="重开/返工" width={presentation==='detail'?'action':undefined} variant={presentation==='detail'?'secondary':'menu'} size="compact" disabled={pending || actionReviewBlocked || needsRefresh} onClick={() => void run(() => onAction("reopen", undefined, item.version), {successMessage:"工作项已重新打开",request:{action:"reopen",expectedVersion:item.version,body:{}}})}><RotateCcw size={14} />重开</Button>;
-  const cancelAction = !stateChangesDisabled && canManage && onCancel && !["completed", "cancelled"].includes(item.status) && <Button aria-label="取消工作项" title="取消工作项" variant={presentation==='detail'?'ghost':'menu'} size="compact" disabled={pending || actionReviewBlocked || needsRefresh} tone="danger" className="danger" onClick={() => { if (onCancel) void run(() => onCancel("", item.version), {successMessage:"工作项已取消",request:{action:"cancel",expectedVersion:item.version,body:{reason:""}}}); }}>{presentation!=="detail"&&<CircleStop size={14} />}取消</Button>;
+  const reopenAction = !stateChangesDisabled && canManage && item.status === 'completed' && <Button aria-label="重开/返工" title="重开/返工" width={presentation==='detail'?'action':undefined} variant={presentation==='detail'?'secondary':'menu'} size="compact" disabled={pending || actionReviewBlocked || needsRefresh} onClick={() => void run(() => onAction("reopen", undefined, item.version), {successMessage:"工作项已重新打开",request:{action:"reopen",expectedVersion:item.version,body:{}}})}><RotateCcw size={14} />重开</Button>;
+  const cancelAction = !stateChangesDisabled && canManage && onCancel && !["completed", "cancelled"].includes(item.status) && <Button aria-label="取消工作项" title="取消工作项" variant={presentation==='detail'?'ghost':'menu'} size="compact" disabled={pending || loadingImpact || actionReviewBlocked || needsRefresh} tone="danger" className="danger" onClick={() => void prepareCancel()}>{presentation!=="detail"&&<CircleStop size={14} />}取消</Button>;
   const secondaryActions = <>{extraMenu}{datesAction}{backfillAction}{reopenAction}{cancelAction}</>;
 
   return <div className={"work-item-actions"+(presentation==='detail'?' work-item-actions-detail':'')} ref={anchorRef} onClick={(event) => event.stopPropagation()}>
@@ -237,6 +262,21 @@ export function WorkItemActions({
     {startRequirement&&<StartAssignmentDialog requirement={startRequirement} workItem={item} pending={pending} blocked={actionReviewBlocked||needsRefresh} recovery={(actionReviewBlocked||needsRefresh)&&<p className="warning-banner">请先关闭此窗口，读取最新状态并核对执行记录，再继续操作。</p>} error={error} onClose={()=>setStartRequirement(null)} onStart={assignment=>run(()=>onAction('start',undefined,item.version,undefined,assignment),{successMessage:'工作项已开始',request:{action:'start',expectedVersion:item.version,body:{...assignment}}}).then(saved=>{if(saved)setStartRequirement(null);return !!saved;})}/>}
     <WorkActionSurface anchorRef={panel==='menu'?menuRef:anchorRef} panel={panel} pending={pending} onClose={() => { if (!pending) changePanel(null); }}>
       {panel === "menu" && secondaryActions}
+      {panel === 'cancel' && <form className="inline-action-form" onSubmit={event=>{
+        event.preventDefault();if (!cancelImpact || !onCancel) return;
+        void run(()=>onCancel(reason.trim(),baselineVersion,cancelImpact.revision),{successMessage:'工作项已取消并移除',request:{action:'cancel',expectedVersion:baselineVersion,body:{reason:reason.trim(),expectedDependencyRevision:cancelImpact.revision}}});
+      }}>
+        <p>将移除 <strong>{item.title}</strong>，不保留占位，也不能恢复。需要时重新添加。</p>
+        <p>历史进展和工作项名称保留在需求记录中。</p>
+        {loadingImpact && <p role="status">正在核对关联影响…</p>}
+        {cancelImpact && <>
+          {cancelImpact.dependencies.length ? <><p>以下 {cancelImpact.dependencies.length} 条依赖将解除，不自动连接前后工作：</p><ul>{cancelImpact.dependencies.map(edge=><li key={edge.id}>{edge.sourceTitle} → {edge.targetTitle}</li>)}</ul></> : <p>没有需要解除的前后依赖。</p>}
+          {!!cancelImpact.milestones.length && <p>以下里程碑改为人工确认，避免移除前置后自动达成：{cancelImpact.milestones.map(m=>m.title).join('、')}。</p>}
+        </>}
+        <label><span>取消说明（可选）</span><textarea rows={2} readOnly={pending} value={reason} onChange={event=>setReason(event.target.value)}/></label>
+        {error && <p className="form-error" role="alert">{error}</p>}{readNotice}
+        <footer><Button variant="secondary" type="button" disabled={pending} onClick={()=>changePanel(null)}>保留工作项</Button><Button variant="primary" tone="danger" type="submit" busy={pending} disabled={pending || loadingImpact || !cancelImpact || blocked}>确认取消并移除</Button></footer>
+      </form>}
       {textPanel && <form className="inline-action-form" onSubmit={(event) => { event.preventDefault(); submitText(); }}>
         <p className="work-complete-summary">确认完成 <strong>{item.title}</strong>？</p>
         <label><span>{textConfig[textPanel].label}</span><textarea autoFocus readOnly={pending} rows={3} value={reason} onChange={(event) => setReason(event.target.value)} placeholder={textConfig[textPanel].placeholder} /></label>

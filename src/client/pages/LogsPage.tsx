@@ -85,7 +85,7 @@ export function LogsPage() {
         <div className="audit-table paged-body" ref={pagination.scrollRef}>
           {Boolean(data?.items.length) && <div className="audit-head"><span>时间（北京时间）</span><span>来源</span><span>对象</span><span>动作</span><span>内容</span></div>}
           {data?.items.map((item) => {
-            const summary = auditSummary(item.summary), objectUrl = auditObjectUrl(item);
+            const summary = auditSummary(item.summary, item), objectUrl = auditObjectUrl(item);
             return <div className="audit-row" key={item.id}>
             <span>{new Date(item.createdAt).toLocaleString("zh-CN", { timeZone: 'Asia/Shanghai' })}</span>
             <span title={item.actorType === "token" && item.tokenName ? `MCP Token：${item.tokenName}` : undefined}>{item.actorType === "system" ? "系统" : item.actorName || "已删除用户"}{item.actorType === "token" && ` · MCP${item.tokenName ? `（${item.tokenName}）` : ""}`}</span>
@@ -95,7 +95,9 @@ export function LogsPage() {
               <summary title="展开或收起操作内容">{summary}</summary>
               {admin && item.projectName && <p className="audit-project-context">项目：{item.projectName}</p>}
               <p>{summary}</p>
-              {objectUrl && <Link className="audit-object-link" to={objectUrl}>查看当前对象</Link>}
+              {objectUrl && <Link className="audit-object-link" to={objectUrl}>{item.workItemDeleted ? '查看需求历史' : '查看当前对象'}</Link>}
+              {item.workItemDeleted && !objectUrl && <p>工作项已移除，未找到保留的执行历史。</p>}
+              {item.objectDeleted && !item.workItemDeleted && <p>{auditEntityLabels[item.entityType] || item.entityType} 已删除，操作记录仍保留。</p>}
               {summary !== item.summary && <details className="audit-original"><summary>原始记录</summary><pre>{item.summary}</pre></details>}
               {item.entityId && <small>对象 ID：{item.entityId}</small>}
             </details>

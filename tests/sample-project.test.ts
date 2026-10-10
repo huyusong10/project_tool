@@ -37,7 +37,7 @@ describe('内置样板项目', () => {
     expect(sqlite.prepare("SELECT COUNT(*) AS count FROM people WHERE id LIKE 'sample-v1-person-%'").get()).toEqual({ count: 6 });
     expect(sqlite.prepare('SELECT COUNT(*) AS count FROM requirements WHERE project_id=?').get(sample.SAMPLE_PROJECT_ID)).toEqual({ count: 7 });
     expect(sqlite.prepare(`SELECT COUNT(*) AS count FROM work_items w JOIN requirements r ON r.id=w.requirement_id
-      WHERE r.project_id=?`).get(sample.SAMPLE_PROJECT_ID)).toEqual({ count: 36 });
+      WHERE r.project_id=?`).get(sample.SAMPLE_PROJECT_ID)).toEqual({ count: 31 });
     expect(sqlite.prepare('SELECT COUNT(*) AS count FROM issues WHERE project_id=?').get(sample.SAMPLE_PROJECT_ID)).toEqual({ count: 5 });
     expect(sqlite.prepare(`SELECT COUNT(*) AS count FROM progress_updates u JOIN requirements r ON r.id=u.requirement_id
       WHERE r.project_id=? AND u.created_by_account_id IS NOT NULL`).get(sample.SAMPLE_PROJECT_ID)).toEqual({ count: 8 });

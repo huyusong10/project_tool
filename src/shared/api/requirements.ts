@@ -2,6 +2,7 @@ import type { WorkItem } from './work-items';
 import type { ProgressUpdate } from './progress';
 
 export type Requirement = import('../delivery').DeliveryFields & import('../intake').Organization & Partial<import('../delivery').ProcessingResult> & {
+  jiraLinks?: import('../jira-links').JiraEntry[];
   sortOrder?:number;readinessIssues?:string[];
   stageResetAt?:string|null;executionStage?:import('../execution-stage').ExecutionStage;milestones?:import('../paths').PathMilestone[];
   pathRisk?: import('../paths').PathRisk;

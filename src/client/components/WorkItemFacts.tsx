@@ -15,6 +15,7 @@ export function WorkItemFacts({item}:{item:WorkItem}){
       {item.milestoneLabel&&<div><dt>里程碑</dt><dd>{item.milestoneLabel}</dd></div>}
       {!!item.unmetPredecessors?.length&&<div className="object-fact-wide"><dt>等待前置</dt><dd>{item.unmetPredecessors.map(p=>p.title).join('、')}</dd></div>}
     </dl>
+    {item.status==='not_started'&&!item.forecastEnd&&item.deliveryForecast?.start&&item.plannedStart&&item.deliveryForecast.start<item.plannedStart&&<p className="object-info-note">自动预计从最早可开工日 {item.deliveryForecast.start} 按 {item.deliveryForecast.remainingDays} 个工作日推算，可能早于计划开始。</p>}
     {item.blockedReason&&<p className="object-info-note">阻塞说明：{item.blockedReason}</p>}
   </>;
 }

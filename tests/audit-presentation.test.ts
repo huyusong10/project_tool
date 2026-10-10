@@ -1,6 +1,33 @@
 import { expect, it } from 'vitest';
 import { auditObjectUrl, auditSummary } from '../src/client/features/audit/presentation';
 
+it('已移除工作显示取消原因和依赖影响，未知快照保留原文', () => {
+  const context={action:'cancel',entityType:'work_item'};
+  const value={title:'旧渠道核验',reason:'旧渠道停止交付',removedDependencies:[{id:'in'},{id:'out'}],milestones:[{id:'m',title:'发布交付'}]};
+  expect(auditSummary(JSON.stringify(value),context)).toBe('旧渠道核验：工作项已移除；取消原因：旧渠道停止交付；已解除 2 条依赖；需人工确认的里程碑：发布交付');
+  expect(auditSummary(JSON.stringify({title:'空工作',removedDependencies:[]}),{action:'delete',entityType:'work_item'})).toBe('空工作：工作项已移除');
+  for(const original of [JSON.stringify({...value,unknown:'保留'}),JSON.stringify({...value,removedDependencies:null}),JSON.stringify({...value,milestones:[{id:'m'}]})])expect(auditSummary(original,context)).toBe(original);
+  expect(auditSummary(JSON.stringify(value),{action:'cancel',entityType:'requirement'})).toBe(JSON.stringify(value));
+});
+
+it('已移除工作链接进入所属需求记录，没有保留历史时不提供失效入口', () => {
+  const item={entityType:'work_item',entityId:'old-work',projectId:'project',workItemDeleted:true,workItemRequirementId:'original-requirement'};
+  const url=new URL(auditObjectUrl(item)!,'http://localhost');
+  expect(url.searchParams.get('detailId')).toBe('original-requirement');expect(url.searchParams.get('detailTab')).toBe('history');
+  expect(url.searchParams.get('projectId')).toBe('project');
+  expect(auditObjectUrl({...item,workItemRequirementId:null})).toBeUndefined();
+  expect(new URL(auditObjectUrl({...item,workItemDeleted:false})!,'http://localhost').searchParams.get('detailId')).toBe('old-work');
+  expect(auditObjectUrl({...item,objectDeleted:true})).toBe(auditObjectUrl(item));
+});
+
+it('已删除对象不进入失效详情，当前对象保留原入口', () => {
+  for(const entityType of ['project','feature','feature_phase','requirement','issue']){
+    const item={entityType,entityId:'removed',projectId:'project'};
+    expect(auditObjectUrl({...item,objectDeleted:true})).toBeUndefined();
+    expect(auditObjectUrl({...item,objectDeleted:false})).toBeDefined();
+  }
+});
+
 it('变更快照优先使用已有文字原因，普通记录和不完整 JSON 保留原文', () => {
   const record=JSON.stringify({reason:'负责人：甲 → 乙',before:{title:'旧名称'},after:{title:'新名称'}});
   expect(auditSummary(record)).toBe('新名称：负责人：甲 → 乙');

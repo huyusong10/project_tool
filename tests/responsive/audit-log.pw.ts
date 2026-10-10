@@ -2,6 +2,46 @@ import { expect, test } from '@playwright/test';
 import { chooseOption } from './select-helper';
 import { mockGanttData } from './gantt-fixture';
 
+test('取消工作日志可读并进入保留历史，无历史的删除不提供失效链接',async({page})=>{
+  const post=async(url:string,data:object)=>{const response=await page.request.post(url,{data});expect(response.ok(),await response.text()).toBe(true);return response.json();};
+  await post('/api/login',{username:'admin',password:'41_xc7q0qOjo4Inw!'});
+  const project=await post('/api/projects',{name:'移除追溯 '+Date.now()}),base='/api/projects/'+project.id;
+  let requirement=await post('/api/requirements',{projectId:project.id,title:'保留核心接口交付'});
+  const read=async()=>(await(await page.request.get('/api/requirements/'+requirement.id)).json());
+  const works=[];
+  for(const title of ['接口设计','旧渠道核验','发布准备','空工作']){
+    works.push(await post('/api/requirements/'+requirement.id+'/work-items',{expectedVersion:requirement.version,title}));requirement=await read();
+  }
+  for(const [source,target] of [[works[0],works[1]],[works[1],works[2]]]){
+    const analysis=await(await page.request.get(base+'/path-analysis')).json();
+    await post(base+'/dependencies',{expectedRevision:analysis.revision,sourceRequirementId:requirement.id,sourceWorkItemId:source.id,targetRequirementId:requirement.id,targetWorkItemId:target.id});
+  }
+  const work=await(await page.request.get('/api/work-items/'+works[1].id)).json();
+  await post('/api/work-items/'+work.id+'/cancel',{expectedVersion:work.version,expectedDependencyRevision:work.cancellationImpact.revision,reason:'审计取消复查：旧渠道停止交付'});
+  const empty=await(await page.request.get('/api/work-items/'+works[3].id)).json();
+  const deleted=await page.request.delete('/api/work-items/'+empty.id,{data:{expectedVersion:empty.version}});expect(deleted.ok(),await deleted.text()).toBe(true);
+  const before=await read(),query='/api/audit/search?'+new URLSearchParams({projectId:project.id,q:'审计取消复查'});
+  const audit=await(await page.request.get(query)).json(),original=audit.items[0].summary;
+  expect(audit.items[0]).toMatchObject({workItemDeleted:true,workItemRequirementId:requirement.id});
+  for(const path of ['/logs','/project-logs?projectId='+project.id]){
+    await page.goto(path);await page.getByRole('searchbox').fill('审计取消复查');
+    const row=page.locator('.audit-row').filter({hasText:'审计取消复查'}),summary=row.locator('.audit-content > summary');
+    await expect(summary).toHaveText('旧渠道核验：工作项已移除；取消原因：审计取消复查：旧渠道停止交付；已解除 2 条依赖');
+    await summary.click();await row.getByText('原始记录',{exact:true}).click();await expect(row.locator('pre')).toHaveText(original);
+    const source=page.url();await row.getByRole('link',{name:'查看需求历史',exact:true}).click();
+    const dialog=page.getByRole('dialog',{name:requirement.title,exact:true});await expect(dialog.getByRole('tab',{name:'记录',exact:true})).toHaveAttribute('aria-selected','true');
+    await expect(dialog).toContainText('取消工作项：旧渠道核验');await expect(dialog).toContainText('审计取消复查：旧渠道停止交付');
+    await page.reload();await expect(dialog).toContainText('取消工作项：旧渠道核验');
+    await dialog.getByRole('tab',{name:'工作项 2',exact:true}).click();await expect(dialog).toContainText('接口设计');await expect(dialog).toContainText('发布准备');
+    await page.goBack();await expect(page.getByRole('searchbox')).toHaveValue('审计取消复查');expect(new URL(page.url()).searchParams.get('snapshot')).toBe(new URL(source).searchParams.get('snapshot'));
+    await page.reload();await expect(summary).toContainText('已解除 2 条依赖');
+    await page.getByRole('searchbox').fill('空工作');
+    const removedRow=page.locator('.audit-row').filter({hasText:'空工作：工作项已移除'});await removedRow.locator('.audit-content > summary').click();
+    await expect(removedRow).toContainText('未找到保留的执行历史');await expect(removedRow.getByRole('link')).toHaveCount(0);
+  }
+  expect(await read()).toEqual(before);expect((await(await page.request.get(query)).json()).items).toEqual(audit.items);
+});
+
 test('批量导入日志记录新增和更新，归属使用当时名称并保留原文',async({page})=>{
   const post=async(url:string,data:unknown)=>{const response=await page.request.post(url,{data});expect(response.ok(),await response.text()).toBe(true);return response.json();};
   await post('/api/login',{username:'admin',password:'41_xc7q0qOjo4Inw!'});
@@ -123,8 +163,13 @@ test('项目日志可以筛选已删除 Phase，并展开长操作内容', async
   const features = await post(base + '/features', { name: '资产管理' });
   const scope = '必须保留的交付说明。'.repeat(60) + 'https://example.com/' + 'a'.repeat(400) + '尾部验收材料';
   const phase = await post(base + '/features/' + features.features[0].id + '/phases', { name: '日志追溯 Phase', scope });
+  const query='/api/audit/search?'+new URLSearchParams({projectId:project.id,entityType:'feature_phase'});
+  const currentAudit=await(await page.request.get(query)).json();expect(currentAudit.items[0]).toMatchObject({entityId:phase.id,objectDeleted:false});
   const removed = await page.request.delete(base + '/feature-phases/' + phase.id, { data: { expectedVersion: phase.version, reason: '删除未安排的空阶段' } });
   expect(removed.ok(), await removed.text()).toBe(true);
+  const removedAudit=await(await page.request.get(query)).json();expect(removedAudit.items).toHaveLength(2);
+  expect(removedAudit.items.every((item:{objectDeleted:boolean})=>item.objectDeleted)).toBe(true);
+  expect(removedAudit.items.find((item:{action:string})=>item.action==='create').summary).toBe(currentAudit.items[0].summary);
   await page.goto('/project-logs?projectId=' + project.id);
   for (const name of ['日志来源', '日志动作', '日志对象']) await expect(page.getByRole('combobox', { name, exact: true })).toBeVisible();
   await chooseOption(page.getByRole('combobox', { name: '日志对象', exact: true }), 'feature_phase');
@@ -138,7 +183,7 @@ test('项目日志可以筛选已删除 Phase，并展开长操作内容', async
   await details.locator('summary').focus();
   await page.keyboard.press('Enter');
   await expect(details).toHaveAttribute('open', '');
-  await expect(details.locator('p')).toContainText('尾部验收材料');
+  await expect(details.locator('p').first()).toContainText('尾部验收材料');
   expect((await created.boundingBox())!.height).toBeGreaterThan(compactHeight);
   expect(await details.evaluate(element => element.scrollWidth <= element.clientWidth + 1)).toBe(true);
   await page.screenshot({ path: info.outputPath('expanded-log.png'), animations: 'disabled' });
@@ -147,14 +192,24 @@ test('项目日志可以筛选已删除 Phase，并展开长操作内容', async
   await expect.poll(async () => (await created.boundingBox())!.height).toBe(compactHeight);
   await page.setViewportSize({ width: 390, height: 844 });
   await details.locator('summary').click();
-  await expect(details.locator('p')).toContainText(scope);
+  await expect(details.locator('p').first()).toContainText(scope);
   expect(await details.evaluate(element => element.scrollWidth <= element.clientWidth + 1)).toBe(true);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
   await page.screenshot({ path: info.outputPath('narrow-expanded-log.png'), animations: 'disabled' });
-  await details.getByRole('link',{name:'查看当前对象',exact:true}).click();
-  await expect(page.getByRole('dialog')).toContainText('对象不存在或已无法访问');
-  await page.goBack();await expect(page.getByRole('combobox',{name:'日志对象',exact:true})).toContainText('Phase');
+  await expect(details.getByRole('link',{name:'查看当前对象',exact:true})).toHaveCount(0);
+  await expect(details).toContainText('Phase 已删除，操作记录仍保留。');
+  await page.reload();await expect(page.getByRole('combobox',{name:'日志对象',exact:true})).toContainText('Phase');
   await expect(created).toHaveCount(1);
+  await created.locator('summary').click();await expect(created).toContainText('Phase 已删除，操作记录仍保留。');
+  await page.goto('/logs');await page.getByRole('searchbox').fill(phase.id);
+  const platformRows=page.locator('.audit-row');await expect(platformRows).toHaveCount(2);
+  for(const row of await platformRows.all()){
+    await row.locator('.audit-content > summary').click();
+    await expect(row.getByRole('link',{name:'查看当前对象',exact:true})).toHaveCount(0);
+    await expect(row).toContainText('Phase 已删除，操作记录仍保留。');
+  }
+  await page.screenshot({path:info.outputPath('removed-phase-audit.png'),animations:'disabled'});
+  expect((await(await page.request.get(query)).json()).items).toEqual(removedAudit.items);
 });
 
 test.describe('日志筛选与显示的业务时区', () => {

@@ -42,6 +42,7 @@ import { isAssignablePerson } from '../assignable-people';
 const statusEntries = issueStatusOptions.map(({ value, label }) => [value, label] as const);
 const priorityEntries = priorityOptions.map(({ value, label }) => [value, label] as const);
 const emptyPeople: Person[] = [];
+type IssueDetailTab = 'basic' | 'updates' | 'history';
 const emptyRequirements: Requirement[] = [];
 const issueColumns: AdaptiveDataColumn[] = [
   { key: "issue", label: "问题", track: "minmax(230px,2fr)", importance: "primary", compact: "primary" },
@@ -153,7 +154,7 @@ function IssueDetail({
   people: Person[];
   requirements: Requirement[];
   defaultReporter?: string | null;
-  initialTab: "basic" | "updates";
+  initialTab: IssueDetailTab;
   canEdit: boolean;
   canContribute: boolean;
   personId: string | null;
@@ -226,7 +227,7 @@ export function IssuesPage() {
   const overdue = searchParams.get("overdue") === "true", unassigned = searchParams.get("unassigned") === "true";
   const { page, pageSize } = readPagination(searchParams);
   const selectedIssueId = searchParams.get("detailId")?.replace(/^issue:/, "") || searchParams.get("issueId") || undefined;
-  const [detailTab, setDetailTab] = useState<"basic" | "updates">("updates");
+  const [detailTab, setDetailTab] = useState<IssueDetailTab>("updates");
   const [formIssue, setFormIssue] = useState<Issue | null | undefined>(undefined);
   const [detailPending, setDetailPending] = useState(false);
   const [formPending, setFormPending] = useState(false);
@@ -370,7 +371,7 @@ export function IssuesPage() {
   usePageScrollPosition(!isLoading);
   const listUnavailable = Boolean(error && !data);
   const summary = data?.summary || { total: 0, inProgress: 0, deferred: 0, resolved: 0, active: 0, highPriority: 0, overdue: 0, unassigned: 0, closureRate: 0 };
-  const openIssue = (id: string, tab: "basic" | "updates") => {
+  const openIssue = (id: string, tab: IssueDetailTab) => {
     setDetailTab(tab);
     const next = new URLSearchParams(linkedQuery); next.delete("issueId"); next.set("detailId",id); next.set("detailTab",tab); next.set("issueHistory.page", "1"); setSearchParams(next, {replace:false});
   };
@@ -423,7 +424,7 @@ export function IssuesPage() {
           <AdaptiveDataCell column="priority" className="issue-data-priority"><DataCell primary={canEditIssue(issue) ? <InlineSelectCell {...issueRevision(issue)} value={issue.priority} label="问题优先级" options={priorityOptions} displayMode="badge" onSave={(priority, _reason, expectedVersion) => saveIssue(issue, { priority }, expectedVersion)} renderValue={(value) => <StatusBadge kind="priority" value={value} />} /> : <StatusBadge kind="priority" value={issue.priority} />} /></AdaptiveDataCell>
           <AdaptiveDataCell column="owner" className="issue-data-owner"><DataCell primary={canEditIssue(issue) ? <InlineSelectCell {...issueRevision(issue)} value={issue.ownerId} label="问题负责人" options={[{ value: "", label: "未分配" }, ...(issue.status==="resolved"?people.filter(p=>p.projectRole!=="viewer"):eligiblePeople).map((person) => ({ value: person.id, label: person.name })), ...(issue.ownerId && !(issue.status==="resolved"?people:eligiblePeople).some((person) => person.id === issue.ownerId) ? [{ value: issue.ownerId, label: issue.ownerName || "历史负责人", description: "历史负责人" }] : [])]} onSave={(ownerId, _reason, expectedVersion) => saveIssue(issue, { ownerId: ownerId || null }, expectedVersion)} placeholder="未分配" renderValue={(_value, selected) => selected?.value ? selected.label : <span className="muted-text">未分配</span>} /> : issue.ownerName || <span className="muted-text">未分配</span>} /></AdaptiveDataCell>
           <AdaptiveDataCell column="dueDate" className={`issue-data-due${issue.overdue ? " danger-text" : ""}`}><DataCell primary={canEditIssue(issue) && issue.status !== "deferred" ? <InlineDateCell {...issueRevision(issue)} value={issue.dueDate} label="目标日期" onSave={(dueDate, _reason, expectedVersion) => saveIssue(issue, { dueDate }, expectedVersion)} /> : issue.status === "deferred" ? "挂起 · 无日期" : issue.dueDate || "未设置"} secondary={issue.status === "resolved" ? `解决 ${issue.resolvedAt || "日期未记录"}` : issue.overdue ? "已逾期" : undefined} /></AdaptiveDataCell>
-          <AdaptiveDataCell column="latest" className="issue-data-latest"><button type="button" className="issue-latest-update-button" onClick={() => openIssue(issue.id, "updates")}><DataCell primary={<span className="issue-latest-update" title={issue.latestUpdate || undefined}>{issue.latestUpdate || "暂无进展"}</span>} secondary={issue.latestUpdateAt ? shortDateTime(issue.latestUpdateAt) : "查看进展"} /></button></AdaptiveDataCell>
+          <AdaptiveDataCell column="latest" className="issue-data-latest"><button type="button" className="issue-latest-update-button" title={issue.latestUpdateAt || issue.status === 'resolved' ? '查看进展记录' : '追加进展'} onClick={() => openIssue(issue.id, issue.latestUpdateAt || issue.status === 'resolved' ? 'history' : 'updates')}><DataCell primary={<span className="issue-latest-update" title={issue.latestUpdate || undefined}>{issue.latestUpdate || "暂无进展"}</span>} secondary={issue.latestUpdateAt ? shortDateTime(issue.latestUpdateAt) : issue.status === 'resolved' ? '查看记录' : '追加进展'} /></button></AdaptiveDataCell>
         </AdaptiveDataRow>)}
       </AdaptiveDataList>
     </div>

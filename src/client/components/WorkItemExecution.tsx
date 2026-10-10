@@ -15,12 +15,14 @@ import type { Person, Requirement, WorkItem } from '../types';
 import { WorkItemActions } from './WorkItemActions';
 import { ProgressForm } from './ProgressForm';
 import type { StartAssignment } from './StartAssignmentDialog';
+import { useProjectWorkspace } from '../project-workspace-context';
 
 export type ExecutionControls={progress:ReactNode;actions:ReactNode};
 
 /** The inspector and Gantt use the same execution forms, versions and draft checks. */
 export function WorkItemExecution({requirement:r,item,people,children,progressLabel,progressContent,extraMenu,onProgress,presentation="compact"}:{requirement:Requirement;item:WorkItem;people:Person[];children:(controls:ExecutionControls)=>ReactNode;progressLabel?:string;progressContent?:ReactNode;extraMenu?:ReactNode;onProgress?:()=>void;presentation?:"compact"|"detail"}){
   const {session}=useSession(),client=useQueryClient(),account=session.accountId||session.username||'guest';
+  const workspace=useProjectWorkspace();
   const [progressOpen,setProgressOpen]=useDeliveryForm(r.projectId,item.id+':progress-open',()=>false),[history,setHistory]=useState<Requirement|null>(null);
   const [needsCheck,setNeedsCheck]=useState(()=>readWorkItemActionRechecks(account).has(item.id));
   useEffect(()=>{setNeedsCheck(readWorkItemActionRechecks(account).has(item.id));setHistory(null);},[account,item.id]);
@@ -41,10 +43,14 @@ export function WorkItemExecution({requirement:r,item,people,children,progressLa
   const progress=presentation==='detail'?<span className="work-execution-progress-slot">{progressControl}</span>:progressControl;
   const actions=access.operate?<WorkItemActions item={item} extraMenu={extraMenu} presentation={presentation}
     onAction={(next,content,expectedVersion,expectedDependencyRevision,assignment)=>action.mutateAsync({action:next,content,expectedVersion,expectedDependencyRevision,assignment})}
-    onCancel={(reason,expectedVersion)=>action.mutateAsync({action:'cancel',content:reason,expectedVersion})}
+    onCancel={(reason,expectedVersion,expectedDependencyRevision)=>action.mutateAsync({action:'cancel',content:reason,expectedVersion,expectedDependencyRevision}).then(result=>{
+      persistWorkItemActionRecheck(account,item.id,false);
+      if(workspace?.location.inspector===item.id)workspace.inspect(r.id,'history',true);
+      return result;
+    })}
     onSaveDates={access.manager?(dates,version)=>save(item,dates,version):undefined}
     onCompleteAsPlanned={access.manager&&!['completed','cancelled','pending_acceptance'].includes(r.status)?expectedVersion=>action.mutateAsync({action:'complete-as-planned',expectedVersion}):undefined}
-    onReload={async()=>{const latest=await reload(),work=latest.workItems.find(w=>w.id===item.id);if(!work)throw Error('工作项已不存在，请关闭操作面板。');invalidateRequirementViews(client,r.id);return {item:work,updates:latest.progressUpdates?.filter(u=>u.workItemId===item.id)||[]};}}
+    onReload={async()=>{const latest=await reload(),work=latest.workItems.find(w=>w.id===item.id);if(!work){persistWorkItemActionRecheck(account,item.id,false);if(workspace?.location.inspector===item.id)workspace.inspect(r.id,'history',true);}invalidateRequirementViews(client,r.id);return {item:work || null,updates:latest.progressUpdates?.filter(u=>u.workItemId===item.id)||[]};}}
     onOpenChange={open=>{if(open&&(!history||!currentRequirement.progressUpdates))void reload().catch(()=>{/* The action's reload control can retry; server checks all history before writing. */});}}
     hasExecutionHistory={!!item.actualStart||updates.some(u=>!['note','correction'].includes(u.eventType))} correctionCandidates={updates}
     canManage={access.manager||access.owner} stateChangesDisabled={r.status==='cancelled'} writeNeedsRecheck={needsCheck}

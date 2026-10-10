@@ -92,8 +92,8 @@ const requirementViewKeys: QueryKey[] = [
 export type RequirementChange = 'structure' | 'execution' | 'links';
 
 export function invalidateRequirementViews(client: QueryClient, requirementId?: string, change: RequirementChange = 'structure') {
-  if (change === 'links' && requirementId) {
-    invalidateMany(client, [keys.requirement(requirementId), keys.paths, keys.featureGraph, keys.auditSearch]);
+  if (change === 'links') {
+    invalidateMany(client, [requirementId ? keys.requirement(requirementId) : keys.requirementDetails, keys.requirements, keys.dashboard, keys.myWork, keys.paths, keys.featureGraph, keys.auditSearch]);
     return;
   }
   // Execution doesn't rename linked issues or change feature-to-feature relations.

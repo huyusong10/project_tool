@@ -74,7 +74,10 @@ export function usePageResolution(sessionQuery: ResourceQuery<Session>, projects
     phase = 'error'; errorTitle = '无权编辑流程'; error = new Error('当前账号可以查看流程列表，不能编辑流程。'); retry = () => sessionQuery.refetch();
   }
   if (phase === 'ready' && browseReady && (!session.authenticated || project?.publicReadOnly) && !isGuestRoute(location.pathname)) {
-    phase = 'error'; errorTitle = '此页面需要项目授权'; error = new Error('游客可以浏览项目空间。登录有权限的账号后可使用此页面。'); retry = () => projectsQuery.refetch();
+    phase = 'error';
+    errorTitle = scope === 'project' ? '此页面需要项目授权' : '此页面需要登录';
+    error = new Error(scope === 'project' ? '游客可以浏览项目空间。登录有权限的账号后可使用此页面。' : '登录后按账号权限使用此页面。');
+    retry = scope === 'project' ? () => projectsQuery.refetch() : () => sessionQuery.refetch();
   }
   const resolvedProjectId = phase === 'ready' ? project?.id : undefined;
   useEffect(() => { if (browseReady && resolvedProjectId) rememberProject(account, resolvedProjectId); }, [account, browseReady, resolvedProjectId]);

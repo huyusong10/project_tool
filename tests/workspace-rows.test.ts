@@ -8,6 +8,20 @@ import {selectedProgressStates,progressStatesValue,progressStatesLabel} from '..
 const stage=deriveExecutionStage({status:'in_progress'},[{title:'测试',status:'in_progress',workStage:'testing',progress:70,progressWeight:1}]);
 function fixture(){return {asOfDate:'2026-09-14',requirements:[{id:'r',title:'资产导入',featureId:'f',phaseId:'p',status:'in_progress',executionStage:stage,workItems:[{id:'w',title:'测试',status:'in_progress',progress:70}]}],featureOverview:{features:[{id:'f',name:'资产管理',phases:[{id:'p',name:'Phase 1',status:'in_progress',requirements:[{id:'r',title:'资产导入',status:'in_progress',executionStage:stage},{id:'archived',title:'归档交付',status:'completed',deletedAt:'2026-09-13',executionStage:deriveExecutionStage({status:'completed'})}]},{id:'empty',name:'探索',status:'planning',requirements:[]}]},{id:'empty-feature',name:'告警管理',phases:[]}]}} as unknown as Dashboard;}
 const filters={query:'',featureId:'',phaseId:'',state:'active',stage:''};
+it('Jira编号定位工作并保留祖先，自有链接与需求继承按页面展示匹配',()=>{
+  const report=fixture(),r=report.requirements[0];
+  r.jiraLinks=[{key:'DCIM-33',url:'https://example.com/browse/DCIM-33',source:'reference'},{key:'DCIM-34',url:'https://example.com/browse/DCIM-34',source:'reference'}];
+  r.workItems[0].jiraLinks=[{key:'DCIM-35',url:'https://example.com/browse/DCIM-35',source:'reference'}];
+  r.workItems.push({...r.workItems[0],id:'inherited',title:'资料核对',jiraLinks:[]});
+  const tree=workspaceRows(report);
+  for(const query of ['dcim-35','ＤＣＩＭ－３５']) {
+    const rows=flattenWorkspaceRows(filterWorkspaceRows(tree,{...filters,query}),{},true).map(({row})=>row);
+    expect(rows.map(row=>row.id)).toEqual(['feature:f','phase:p','r','w']);
+    expect(rows.at(-1)?.work?.jiraLinks?.[0].key).toBe('DCIM-35');
+  }
+  expect(flattenWorkspaceRows(filterWorkspaceRows(tree,{...filters,query:'DCIM-34'}),{},true).some(({row})=>row.id==='inherited')).toBe(true);
+  expect(filterWorkspaceRows(tree,{...filters,query:'DCIM-999'})).toEqual([]);
+});
 it('切换项目和特性范围保留空特性、空 Phase；执行筛选仍排除空对象',()=>{
   const tree=workspaceRows(fixture()),all=filterWorkspaceRows(tree,filters);
   expect(scopeWorkspaceRows(all,{kind:'project',id:'project'}).map(r=>r.id)).toContain('feature:empty-feature');
@@ -106,11 +120,11 @@ it('旧筛选链接保留，任意多选与全不选能够往返',()=>{
   expect(selectedProgressStates(progressStatesValue(['completed','not_started']))).toEqual(['not_started','completed']);
 });
 
-it('取消工作保留执行记录，图形草稿移除的其他工作不重新出现',()=>{
+it('已移除工作不作为历史占位重新加入清单或进展表',()=>{
   const report=fixture(),r=report.requirements[0];r.workItems.push({...r.workItems[0],id:'cancelled',title:'取消的工作',status:'cancelled',sortOrder:1});
   const projection={requirements:[r],nodes:[]} as unknown as import('../src/shared/paths').PathAnalysis;
   const rows=workspaceRows(report,projection),works=flattenWorkspaceRows(rows,{},true).filter(({row})=>row.kind==='work').map(({row})=>row);
-  expect(works.map(w=>w.id)).toEqual(['cancelled']);expect(works[0].formalWork).toBe(r.workItems[1]);expect(works[0].work?.status).toBe('cancelled');
+  expect(works).toEqual([]);
   expect(flattenWorkspaceRows(filterWorkspaceRows(rows,{...filters,status:'in_progress'}),{},true).some(({row})=>row.id==='cancelled')).toBe(false);
 });
 

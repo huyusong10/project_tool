@@ -417,42 +417,17 @@ afterAll(async () => {
   fs.rmSync(directory, { recursive: true, force: true });
 });
 
-it('旧取消工作项受控修正后保持原取消日期上限', async () => {
-  const created = await post('/api/requirements', {
-    projectId: scope.projectId, title: `旧取消记录${++sequence}`, ownerId: scope.personId,
-    templateId: scope.templateId, plannedStart: '2020-01-02',
-  });
-  expect(created.statusCode, created.body).toBe(200);
-  const requirement = created.json<Detail>();
-  const item = requirement.workItems![0];
-  const cancelled = await command('REST', 'work_item', item.id, 'cancel', {
-    expectedVersion: item.version, reason: '模拟旧版取消',
-  });
-  expect(cancelled.statusCode, JSON.stringify(cancelled.body)).toBe(200);
-
-  const { sqlite } = await import('./support/database');
-  sqlite.prepare("DELETE FROM progress_updates WHERE work_item_id=? AND event_type='cancel'").run(item.id);
-  sqlite.prepare("UPDATE audit_logs SET created_at=? WHERE entity_type='work_item' AND entity_id=? AND action='cancel'")
-    .run('2020-01-05T08:00:00.000Z', item.id);
-  sqlite.prepare('UPDATE work_items SET updated_at=? WHERE id=?').run('2020-01-05T08:00:00.000Z', item.id);
-  const legacy = (await detail(requirement.id)).workItems!.find((entry) => entry.id === item.id)!;
-  expect(legacy.cancelledAt).toBe('2020-01-05');
-
-  const corrected = await command('REST', 'work_item', item.id, 'correct', {
-    expectedVersion: legacy.version, actualStart: '2020-01-03', reason: '补录取消前的实际开始',
-  });
-  expect(corrected.statusCode, JSON.stringify(corrected.body)).toBe(200);
-  expect(corrected.body).toMatchObject({ actualStart: '2020-01-03', cancelledAt: '2020-01-05' });
-  expect(corrected.body.updatedAt).not.toBe(legacy.updatedAt);
-
-  const rejected = await command('REST', 'work_item', item.id, 'correct', {
-    expectedVersion: corrected.body.version, actualStart: '2020-01-06', reason: '不能越过原取消日期',
-  });
-  expect(rejected.statusCode, JSON.stringify(rejected.body)).toBe(400);
-  expect(String(rejected.body.error)).toContain('不能晚于取消日期（2020-01-05）');
+it('取消工作项移除后不能纠错，历史记录保持可读', async () => {
+  const item = await createWork();
+  const cancelled = await command('REST','work_item',item.id,'cancel',{expectedVersion:item.version});
+  expect(cancelled.statusCode).toBe(200);
+  const before=await detail(item.requirementId);
+  expect(before.workItems!.some(work=>work.id===item.id)).toBe(false);
+  const result=await command('REST','work_item',item.id,'correct',{expectedVersion:item.version,actualStart:yesterday,reason:'旧表单提交'});
+  expect(result.statusCode).toBe(404);expect(await detail(item.requirementId)).toEqual(before);
 });
 
-it('MCP 重开未开始的取消工作项时不静默丢弃非零进度', async () => {
+it('MCP 取消后不可重开，不创建替代记录', async () => {
   const created = await createCommand('MCP', 'requirement', {
     projectId: scope.projectId, title: `取消后重开${++sequence}`, ownerId: scope.personId,
     templateId: scope.templateId, plannedStart: '2020-01-02',
@@ -467,10 +442,9 @@ it('MCP 重开未开始的取消工作项时不静默丢弃非零进度', async 
   const before = await detail(requirement.id);
 
   const rejected = await command('MCP', 'work_item', item.id, 'reopen', {
-    expectedVersion: cancelled.body.version, reason: '恢复执行', progress: 40,
+    expectedVersion: item.version, reason: '恢复执行', progress: 40,
   });
-  expect(rejected.statusCode, JSON.stringify(rejected.body)).toBe(400);
-  expect(JSON.stringify(rejected.body)).toContain('只能按0%重开');
+  expect(rejected.statusCode, JSON.stringify(rejected.body)).toBe(404);
   expect(await detail(requirement.id)).toEqual(before);
 });
 
@@ -502,7 +476,7 @@ for (const protocol of ['REST', 'MCP'] as const) {
     }));
   });
 
-  it.each(['in_progress', 'completed', 'cancelled'])(`${protocol}：%s工作项不能纠错为未来实际日期`, async (status) => {
+  it.each(['in_progress', 'completed'])(`${protocol}：%s工作项不能纠错为未来实际日期`, async (status) => {
     let item = await createWork();
     if (status !== 'in_progress') {
       const action = { blocked: 'block', completed: 'complete', cancelled: 'cancel' }[status]!;

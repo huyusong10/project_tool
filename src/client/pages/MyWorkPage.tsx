@@ -1,3 +1,4 @@
+import { JiraEntries, WorkJiraEntries } from '../components/JiraEntries';
 import * as reportingApi from '../features/reporting/api';
 import * as workItemsApi from '../features/work-items/api';
 import * as requirementsApi from '../features/requirements/api';
@@ -95,7 +96,7 @@ export function MyWorkPage() {
             <div><strong>{requirement.title}</strong></div>
             <p>{requirement.projectName}<br /><span>{requirement.plannedStart || "待排期"}</span> → <span>{requirement.plannedEnd || "待排期"}</span></p>
             <footer><span className={`status-pill status-${requirement.status}`}>{requirementStatusLabels[requirement.status as keyof typeof requirementStatusLabels] || requirement.status}</span>{requirement.status!=='cancelled'&&<span title={planning||variance.title}>{planning||`${risk.closed?'':risk.label+' · '}${variance.label}`}</span>}<b>{requirement.actionCount} 项待处理</b></footer>
-          </button>{requirement.executionMode==='direct'&&<DeliveryControls requirement={requirement as Requirement} compact/>}</div>;})}
+          </button><JiraEntries links={requirement.jiraLinks}/>{requirement.executionMode==='direct'&&<DeliveryControls requirement={requirement as Requirement} compact/>}</div>;})}
         </div>
         <Pagination {...ownedPagination.props} label="我负责的需求分页" />
       </section>}
@@ -125,7 +126,7 @@ export function MyWorkPage() {
           }}
           renderItemMeta={(baseItem) => {
             const item = baseItem as MyWorkItem;
-            return <><small title={`${item.projectName} · ${item.requirementTitle}`}>{item.projectName} · {item.requirementTitle}</small><em className="my-work-assignment-badge">{item.assignmentType === 'owner' ? '主责' : '协作'}</em>{item.overdue && <em className="my-work-overdue-badge">延期</em>}</>;
+            return <><WorkJiraEntries work={item.id===item.requirementId?undefined:item} requirement={{jiraLinks:item.requirementJiraLinks||item.jiraLinks}}/><small title={`${item.projectName} · ${item.requirementTitle}`}>{item.projectName} · {item.requirementTitle}</small><em className="my-work-assignment-badge">{item.assignmentType === 'owner' ? '主责' : '协作'}</em>{item.overdue && <em className="my-work-overdue-badge">延期</em>}</>;
           }}
           renderActions={(baseItem) => {
             const item = baseItem as MyWorkItem;

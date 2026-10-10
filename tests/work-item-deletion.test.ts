@@ -6,7 +6,7 @@ import path from 'node:path';
 import { scryptSync } from 'node:crypto';
 import { afterAll, beforeAll, expect, it } from 'vitest';
 import type { FastifyInstance } from 'fastify';
-import type { getRequirement, RequirementRecord } from '../src/server/services/requirements';
+import type { Requirement } from '../src/shared/api/requirements';
 
 const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'project-manage-deletion-'));
 const password = 'temporary-deletion-password-123';
@@ -26,11 +26,11 @@ let templateId = '';
 let ownerId = '';
 let sequence = 0;
 const post = (url: string, payload: Record<string, unknown>) => app.inject({ method: 'POST', url, headers: { cookie }, payload });
-const detail = async (id: string) => (await app.inject({ url: `/api/requirements/${id}`, headers: { cookie } })).json<ReturnType<typeof getRequirement>>();
+const detail = async (id: string) => (await app.inject({ url: `/api/requirements/${id}`, headers: { cookie } })).json<Requirement>();
 async function createRequirement() {
   const created = await post('/api/requirements', { projectId, ownerId, templateId, title: `删除场景${++sequence}`, plannedStart: '2020-01-02' });
   expect(created.statusCode, created.body).toBe(200);
-  return created.json<RequirementRecord>();
+  return created.json<Requirement>();
 }
 async function remove(protocol: 'REST' | 'MCP', id: string, expectedVersion: number) {
   if (protocol === 'REST') {
@@ -73,6 +73,25 @@ it('工作项排序审计保留所属项目', async () => {
   expect(sqlite.prepare("SELECT project_id AS projectId FROM audit_logs WHERE action='reorder' AND entity_id=? ORDER BY rowid DESC LIMIT 1").get(requirement.id)).toEqual({ projectId });
 });
 
+it('两个日志接口区分当前与已删除对象，不修改历史记录或未知类型', async () => {
+  const requirement=await createRequirement(),{sqlite}=await import('./support/database');
+  const actor=sqlite.prepare("SELECT id FROM accounts WHERE username='admin'").get() as {id:string};
+  const marker='对象生命周期复查',insert=sqlite.prepare("INSERT INTO audit_logs(id,actor_type,actor_id,action,entity_type,entity_id,project_id,summary,created_at) VALUES(?,'user',?,'create',?,?,?,?,?)");
+  const current=[['project',projectId],['requirement',requirement.id],['work_item',requirement.workItems![0].id]];
+  const removed=['project','feature','feature_phase','requirement','work_item','issue'].map(type=>[type,'removed-'+type]);
+  for(const [type,id] of [...current,...removed,['backup','old-file']])insert.run('audit-'+id,actor.id,type,id,projectId,marker+' '+id,new Date().toISOString());
+  const original=sqlite.prepare('SELECT * FROM audit_logs WHERE summary LIKE ? ORDER BY id').all(marker+'%');
+  for(const url of ['/api/audit?limit=500','/api/audit/search?q='+encodeURIComponent(marker)]){
+    const response=await app.inject({url,headers:{cookie}});expect(response.statusCode,response.body).toBe(200);
+    const entries=(Array.isArray(response.json())?response.json():response.json().items).filter((entry:{summary:string})=>entry.summary.startsWith(marker));
+    expect(entries).toHaveLength(10);
+    for(const [type,id] of current)expect(entries.find((entry:{entityType:string;entityId:string})=>entry.entityType===type&&entry.entityId===id)).toMatchObject({objectDeleted:false});
+    for(const [type,id] of removed)expect(entries.find((entry:{entityType:string;entityId:string})=>entry.entityType===type&&entry.entityId===id)).toMatchObject({objectDeleted:true});
+    expect(entries.find((entry:{entityType:string})=>entry.entityType==='backup').objectDeleted).toBeUndefined();
+  }
+  expect(sqlite.prepare('SELECT * FROM audit_logs WHERE summary LIKE ? ORDER BY id').all(marker+'%')).toEqual(original);
+});
+
 for (const protocol of ['REST', 'MCP'] as const) {
   it(`${protocol}删除安全工作项后同步需求计划，只生成一次删除记录`, async () => {
     const before = await createRequirement();
@@ -87,6 +106,8 @@ for (const protocol of ['REST', 'MCP'] as const) {
     const { sqlite } = await import('./support/database');
     expect(sqlite.prepare("SELECT COUNT(*) AS n FROM audit_logs WHERE action='delete' AND entity_id=?").get(item.id)).toEqual({ n: 1 });
     expect(sqlite.prepare("SELECT project_id AS projectId FROM audit_logs WHERE action='delete' AND entity_id=?").get(item.id)).toEqual({ projectId });
+    const audit=(await app.inject({url:'/api/audit/search?'+new URLSearchParams({projectId,q:item.id}),headers:{cookie}})).json();
+    expect(audit.items.find((entry:{entityId:string})=>entry.entityId===item.id)).toMatchObject({workItemDeleted:true,workItemRequirementId:null});
   });
 
   it(`${protocol}其他工作项的说明不阻止安全删除，旧版本提交不能删除`, async () => {
@@ -125,6 +146,89 @@ for (const protocol of ['REST', 'MCP'] as const) {
   });
 }
 import { withoutForecastRevision } from './fixtures/forecast-snapshot';
+
+async function cancelWork(protocol: 'REST' | 'MCP', id: string, input: Record<string, unknown>) {
+  if (protocol === 'REST') {
+    const response = await post(`/api/work-items/${id}/cancel`,input);
+    return {statusCode:response.statusCode,body:response.json()};
+  }
+  const response=await mcpRequest(origin,token,'cancel_work_item',{id,...input});
+  const result=JSON.parse(response.body).result.structuredContent;
+  return {statusCode:result.statusCode || 200,body:result.result};
+}
+const workDetail = async(id:string)=>(await app.inject({url:`/api/work-items/${id}`,headers:{cookie}})).json();
+
+for (const protocol of ['REST','MCP'] as const) {
+  it(`${protocol}取消执行中的工作后移除实体，保留原历史、Jira来源和记录查询；重新添加不继承执行`,async()=>{
+    let r=await createRequirement();let work=r.workItems![0];
+    work=(await app.inject({method:'PATCH',url:`/api/work-items/${work.id}`,headers:{cookie},payload:{expectedVersion:work.version,ownerId}})).json();
+    work=(await post(`/api/work-items/${work.id}/start`,{expectedVersion:work.version})).json();
+    expect((await post(`/api/requirements/${r.id}/progress`,{workItemId:work.id,expectedVersion:work.version,workItemPercent:40,content:'取消前已完成调查'})).statusCode).toBe(200);
+    r=await detail(r.id);work=r.workItems![0];const history=r.progressUpdates || [];
+    const impact=(await workDetail(work.id)).cancellationImpact;
+    expect((await cancelWork(protocol,work.id,{expectedVersion:work.version,expectedDependencyRevision:impact.revision,reason:'范围缩减'})).statusCode).toBe(200);
+    const after=await detail(r.id),{sqlite}=await import('./support/database');
+    expect(after.workItems!.some(w=>w.id===work.id)).toBe(false);
+    expect(after.progressUpdates).toEqual(expect.arrayContaining(history));
+    expect(after.progressUpdates).toEqual(expect.arrayContaining([expect.objectContaining({eventType:'cancel',workItemId:work.id,workItemTitle:work.title,workItemPercent:40})]));
+    expect(sqlite.prepare('SELECT id FROM work_items WHERE id=?').get(work.id)).toBeUndefined();
+    expect(sqlite.prepare('SELECT work_item_id AS active,deleted_work_item_id AS oldId,deleted_work_item_title AS title FROM progress_updates WHERE deleted_work_item_id=?').all(work.id)).toEqual(expect.arrayContaining([{active:null,oldId:work.id,title:work.title}]));
+    const audit=(await app.inject({url:'/api/audit/search?'+new URLSearchParams({projectId,q:work.id}),headers:{cookie}})).json();
+    expect(audit.items.length).toBeGreaterThan(1);
+    expect(audit.items.filter((entry:{entityType:string})=>entry.entityType==='work_item')).toEqual(expect.arrayContaining([expect.objectContaining({entityId:work.id,workItemDeleted:true,workItemRequirementId:r.id})]));
+    const foreign=(await post('/api/projects',{name:'不同范围审计'+protocol})).json();
+    sqlite.prepare("INSERT INTO audit_logs(id,actor_type,action,entity_type,entity_id,project_id,summary,created_at) VALUES(?,'system','delete','work_item',?,?,?,?)")
+      .run('foreign-audit-'+work.id,work.id,foreign.id,'范围不一致的旧记录',new Date().toISOString());
+    const foreignAudit=(await app.inject({url:'/api/audit/search?'+new URLSearchParams({projectId:foreign.id}),headers:{cookie}})).json();
+    expect(foreignAudit.items[0]).toMatchObject({workItemDeleted:true,workItemRequirementId:null});
+    const response=await mcpRequest(origin,token,'list_progress_updates',{projectId,workItemId:work.id});
+    const records=JSON.parse(response.body).result.structuredContent.result.items;
+    expect(records.length).toBeGreaterThan(1);
+    expect(records.every((entry:{workItemTitle:string})=>entry.workItemTitle===work.title)).toBe(true);
+    expect((await post(`/api/work-items/${work.id}/reopen`,{expectedVersion:work.version+1})).statusCode).toBe(404);
+    const added=(await post(`/api/requirements/${r.id}/work-items`,{expectedVersion:after.version,title:work.title})).json();
+    expect(added).toMatchObject({status:'not_started',progress:0,actualStart:null,ownerId:null});expect(added.id).not.toBe(work.id);
+    expect(sqlite.pragma('foreign_key_check')).toEqual([]);
+  });
+}
+
+it('取消依赖链中间工作需确认最新影响，不自动接线或达成里程碑',async()=>{
+  const r=await createRequirement(),external=await createRequirement(),work=r.workItems![0],peer=r.workItems![1],upstream=external.workItems![0];
+  const {sqlite}=await import('./support/database');const now=new Date().toISOString();
+  const insert=sqlite.prepare("INSERT INTO dependency_edges(id,project_id,source_requirement_id,target_requirement_id,source_work_item_id,target_work_item_id,origin,created_at,updated_at) VALUES(?,?,?,?,?,?,'manual',?,?)");
+  insert.run(work.id+'in',projectId,external.id,r.id,upstream.id,work.id,now,now);
+  insert.run(work.id+'out',projectId,r.id,r.id,work.id,peer.id,now,now);
+  sqlite.prepare("INSERT INTO milestones(id,project_id,title,confirmation_mode,created_at,updated_at) VALUES(?,?,?,'auto',?,?)").run(work.id+'mile',projectId,'待核对交付',now,now);
+  sqlite.prepare("INSERT INTO dependency_edges(id,project_id,source_requirement_id,source_work_item_id,target_milestone_id,origin,created_at,updated_at) VALUES(?,?,?,?,?,'manual',?,?)").run(work.id+'delivery',projectId,r.id,work.id,work.id+'mile',now,now);
+  const before=await detail(r.id),preview=(await workDetail(work.id)).cancellationImpact;
+  expect(preview.dependencies).toEqual(expect.arrayContaining([expect.objectContaining({sourceTitle:work.title,targetTitle:peer.title})]));
+  expect((await cancelWork('REST',work.id,{expectedVersion:work.version})).statusCode).toBe(409);
+  expect(await detail(r.id)).toEqual(before);
+  sqlite.prepare('UPDATE projects SET analysis_revision=analysis_revision+1 WHERE id=?').run(projectId);
+  expect((await cancelWork('REST',work.id,{expectedVersion:work.version,expectedDependencyRevision:preview.revision})).statusCode).toBe(409);
+  const impact=(await workDetail(work.id)).cancellationImpact;
+  expect((await cancelWork('REST',work.id,{expectedVersion:work.version,expectedDependencyRevision:impact.revision})).statusCode).toBe(200);
+  expect(sqlite.prepare('SELECT id FROM dependency_edges WHERE source_work_item_id=? OR target_work_item_id=?').all(work.id,work.id)).toEqual([]);
+  expect(sqlite.prepare('SELECT id FROM dependency_edges WHERE source_work_item_id=? AND target_work_item_id=?').get(upstream.id,peer.id)).toBeUndefined();
+  expect(sqlite.prepare('SELECT achieved_at AS achievedAt,confirmation_mode AS mode FROM milestones WHERE id=?').get(work.id+'mile')).toEqual({achievedAt:null,mode:'manual'});
+});
+
+it('取消最后一项工作保持需求未完成，旧版本与写入故障均不部分删除',async()=>{
+  const r=await createRequirement(),first=r.workItems![0],last=r.workItems![1],{sqlite}=await import('./support/database');
+  expect((await cancelWork('REST',first.id,{expectedVersion:first.version+1})).statusCode).toBe(409);
+  sqlite.exec("CREATE TEMP TRIGGER fail_cancel_audit BEFORE INSERT ON audit_logs WHEN NEW.action='cancel' BEGIN SELECT RAISE(ABORT,'simulated cancellation failure'); END;");
+  const preview=(await workDetail(first.id)).cancellationImpact;
+  try {expect((await cancelWork('REST',first.id,{expectedVersion:first.version,expectedDependencyRevision:preview.revision})).statusCode).not.toBe(200);}
+  finally {sqlite.exec('DROP TRIGGER fail_cancel_audit');}
+  expect(await detail(r.id)).toEqual(r);
+  for(const work of [first,last]){
+    const impact=(await workDetail(work.id)).cancellationImpact;
+    expect((await cancelWork('REST',work.id,{expectedVersion:work.version,expectedDependencyRevision:impact.revision})).statusCode).toBe(200);
+  }
+  const after=await detail(r.id);expect(after).toMatchObject({executionMode:'direct',status:'not_started',progress:0,workItems:[]});
+  expect(after.progressUpdates!.filter(u=>u.eventType==='cancel'&&u.workItemId)).toHaveLength(2);
+  expect(after.progressUpdates!.some(u=>u.eventType==='complete')).toBe(false);
+});
 
 for(const protocol of ['REST','MCP'] as const){
  it(`${protocol} 删除工作项自动清理双向及跨需求依赖，保留其他工作和关联`,async()=>{
